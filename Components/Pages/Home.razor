@@ -1,9 +1,20 @@
 ﻿@page "/"
+@using MixerInterface.Services
+@inject NavigationManager Nav
+@inject OscService _oscService
 
-<section class="container mx-auto max-w-[95vw]">
+<section class="container">
     <h1 class="text-red-500 text-xl font-semibold tracking-wide">MIXING INTERFACE</h1>
-    
     <p class="mt-4 text-gray-600">
         Welcome to your mixing app.
     </p>
+    <a @onclick="() => GoToBand()" class="btn mt-10">Go to band setup</a>
 </section>
+
+@code {
+    private void GoToBand()
+    {
+        Nav.NavigateTo("/band");
+    }
+   
+}

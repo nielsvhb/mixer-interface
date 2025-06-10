@@ -1,0 +1,61 @@
+﻿@page "/band"
+@using MixerInterface.Models
+@using MixerInterface.Interfaces
+@inject IBandMemberStore BandStore
+
+<section class="container">
+    <h1 class="font-bold mb-3">Bandleden</h1>
+    
+    <ul>
+        @foreach (var member in Members)
+        {
+            <li style="color:@member.Color">@member.Channel - @member.Name</li>
+        }
+    </ul>
+    <div class="border border-gray-200 rounded-2xl my-2 p-4 bg-gray-100">
+        <input @bind="NewName" placeholder="Naam" />
+        <select @bind="NewChannel">
+            @foreach (var ch in Channels)
+            {
+                <option>@ch</option>
+            }
+        </select>
+        <input type="color" @bind="NewColor" />
+        
+        <button @onclick="AddMember">Voeg toe</button>
+    </div>
+</section>
+
+@code {
+    List<BandMember> Members = new();
+    string NewName;
+    string NewChannel = "CH01";
+    string NewColor = "#ff0000"; // standaard rood
+
+    List<string> Channels = Enumerable.Range(1, 18).Select(i => $"CH{i:00}").ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Members = await BandStore.GetAllAsync();
+    }
+
+    async Task AddMember()
+    {
+        if (string.IsNullOrWhiteSpace(NewName))
+            return;
+
+        Members.Add(new BandMember
+        {
+            Name = NewName,
+            Channel = NewChannel,
+            Color = NewColor
+        });
+
+        await BandStore.SaveAllAsync(Members);
+
+        // Reset inputs
+        NewName = string.Empty;
+        NewChannel = "CH01";
+        NewColor = "#ff0000";
+    }
+}
