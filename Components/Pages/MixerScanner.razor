@@ -1,0 +1,61 @@
+﻿@page "/mixer-scanner"
+@using Microsoft.Extensions.Logging
+@using MixerInterface.Services
+@inject MixerScannerService Scanner
+@inject ILogger<MixerScanner> Logger
+
+<h1>Mixer Scanner</h1>
+
+<button @onclick="ScanAsync">🔍 Scan naar mixers</button>
+
+@if (isScanning)
+{
+    <p>Zoeken naar mixers...</p>
+}
+else if (mixers.Any())
+{
+    <ul>
+        @foreach (var mixer in mixers)
+        {
+            <li>
+                <strong>@mixer.IPAddress</strong>: @mixer.RawResponse
+                <button @onclick="() => ConnectToMixer(mixer)">🔗 Connect</button>
+            </li>
+        }
+    </ul>
+}
+else if (scanAttempted)
+{
+    <p>❌ Geen mixers gevonden.</p>
+}
+
+@code {
+    private List<MixerInfo> mixers = new();
+    private bool isScanning = false;
+    private bool scanAttempted = false;
+
+    private async Task ScanAsync()
+    {
+        isScanning = true;
+        scanAttempted = true;
+        mixers.Clear();
+
+        try
+        {
+            mixers = await Scanner.ScanAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Fout tijdens het scannen");
+        }
+
+        isScanning = false;
+        StateHasChanged(); // zorg dat UI update
+    }
+
+    private void ConnectToMixer(MixerInfo mixer)
+    {
+        Logger.LogInformation("Verbind met mixer op IP: {ip}", mixer.IPAddress);
+        // TODO: implementeer echte connectie (bijv. via TCP socket)
+    }
+}
