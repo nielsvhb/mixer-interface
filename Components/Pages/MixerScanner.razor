@@ -1,61 +1,55 @@
 ﻿@page "/mixer-scanner"
-@using Microsoft.Extensions.Logging
-@using MixerInterface.Services
-@inject MixerScannerService Scanner
-@inject ILogger<MixerScanner> Logger
+@inject MixerScannerService ScannerService
 
-<h1>Mixer Scanner</h1>
+<div class="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+    <div class="w-full max-w-md p-6 rounded-3xl shadow-neumorphic bg-gray-100 text-center">
+        <h1 class="text-2xl font-bold mb-4 text-gray-700">Let's find your mixer first!</h1>
 
-<button @onclick="ScanAsync">🔍 Scan naar mixers</button>
-
-@if (isScanning)
-{
-    <p>Zoeken naar mixers...</p>
-}
-else if (mixers.Any())
-{
-    <ul>
-        @foreach (var mixer in mixers)
+        @if (isLoading)
         {
-            <li>
-                <strong>@mixer.IPAddress</strong>: @mixer.RawResponse
-                <button @onclick="() => ConnectToMixer(mixer)">🔗 Connect</button>
-            </li>
+            <div class="animate-pulse text-gray-500">Zoeken naar mixers...</div>
         }
-    </ul>
-}
-else if (scanAttempted)
-{
-    <p>❌ Geen mixers gevonden.</p>
-}
+        else if (foundMixers.Count == 0)
+        {
+            <div class="text-red-500">No mixers have been found</div>
+        }
+        else
+        {
+            <ul class="space-y-3 mt-4">
+                @foreach (var mixer in foundMixers)
+                {
+                    <li class="p-4 rounded-2xl shadow-inner bg-gray-100 hover:shadow-neumorphic-light transition">
+                        <div class="font-semibold text-gray-700">IP: @mixer.IPAddress</div>
+                        <div class="text-sm text-gray-500 break-all">@mixer.RawResponse</div>
+                    </li>
+                }
+            </ul>
+        }
+
+        <button @onclick="ScanMixers" class="mt-6 px-6 py-2 bg-gray-200 rounded-xl shadow-neumorphic hover:shadow-neumorphic-inset transition text-gray-700 font-semibold">
+            Opnieuw zoeken
+        </button>
+    </div>
+</div>
 
 @code {
-    private List<MixerInfo> mixers = new();
-    private bool isScanning = false;
-    private bool scanAttempted = false;
+    private bool isLoading = false;
+    private List<MixerInfo> foundMixers = new();
 
-    private async Task ScanAsync()
+    protected override async Task OnInitializedAsync()
     {
-        isScanning = true;
-        scanAttempted = true;
-        mixers.Clear();
-
-        try
-        {
-            mixers = await Scanner.ScanAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Fout tijdens het scannen");
-        }
-
-        isScanning = false;
-        StateHasChanged(); // zorg dat UI update
+        await ScanMixers();
     }
 
-    private void ConnectToMixer(MixerInfo mixer)
+    private async Task ScanMixers()
     {
-        Logger.LogInformation("Verbind met mixer op IP: {ip}", mixer.IPAddress);
-        // TODO: implementeer echte connectie (bijv. via TCP socket)
+        isLoading = true;
+        foundMixers.Clear();
+        StateHasChanged();
+
+        foundMixers = await ScannerService.ScanAsync();
+
+        isLoading = false;
+        StateHasChanged();
     }
 }
