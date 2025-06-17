@@ -2,7 +2,7 @@
 using Android.Content.PM;
 using Android.OS;
 
-namespace MixerInterface;
+namespace Eggbox;
 
 [Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true,
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode |

@@ -1,7 +1,7 @@
 ﻿using Android.App;
 using Android.Runtime;
 
-namespace MixerInterface;
+namespace Eggbox;
 
 [Application]
 public class MainApplication : MauiApplication

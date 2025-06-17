@@ -1,5 +1,6 @@
-﻿@page "/"
-@inject NavigationManager Nav
+﻿@attribute [Route(Routes.Home)]
+@using Eggbox.Services
+@inject MixerConnectorService Connector
 
 <section class="container">
     <h1 class="text-red-500 text-xl font-semibold tracking-wide">MIXING INTERFACE</h1>
@@ -7,10 +8,76 @@
         Welcome to your mixing app.
     </p>
     
-    <NavLink href="/mixer-scanner" class=" mt-10">Mixer zoeken</NavLink>
+    @if (lastMixer != null)
+    {
+        <div class="mb-4 text-center">
+            <p class="text-gray-700">Last mixer used: <strong>@lastMixer.IPAddress</strong></p>
+            <button class="mt-2 px-4 py-2 bg-green-200 rounded-xl hover:bg-green-300 transition"
+                    @onclick="() => ReconnectToLastMixer(lastMixer)">
+                Connect
+            </button>
+        </div>
+    }
+    
+    @if (showReconnectError)
+    {
+        <div class="p-4 mt-4 rounded-xl bg-yellow-100 border border-yellow-300 text-yellow-800 shadow-neumorphic-light">
+            <p>Kan geen verbinding maken met <strong>@lastMixer?.IPAddress</strong>.</p>
+            <p>Staat de mixer aan en is deze verbonden met hetzelfde wifi-netwerk?</p>
+            
+            <div class="mt-4 flex gap-4 justify-center">
+                <button @onclick="()=>ReconnectToLastMixer(lastMixer)" class="px-4 py-2 bg-gray-200 rounded-xl hover:bg-gray-300">Opnieuw proberen</button>
+                <button @onclick="()=>ForgetLastMixer()" class="px-4 py-2 bg-red-200 text-red-800 rounded-xl hover:bg-red-300">Mixer vergeten</button>
+            </div>
+        </div>
+    }
+    
+    <NavLink href="@Routes.MixerScanner" class="mt-10">Mixer zoeken</NavLink>
 
 </section>
 
 @code {
-   
+    private MixerInfo? lastMixer;
+    private bool showReconnectError = false;
+
+    private void ForgetLastMixer()
+    {
+        Preferences.Remove("LastMixerIP");
+        Preferences.Remove("LastMixerResponse");
+        lastMixer = null;
+        showReconnectError = false;
+    }
+    
+    protected override async Task OnInitializedAsync()
+    {
+        lastMixer = LoadLastMixer();
+    }
+    
+    private MixerInfo? LoadLastMixer()
+    {
+        if (Preferences.ContainsKey("LastMixerIP"))
+        {
+            return new MixerInfo
+            {
+                IPAddress = Preferences.Get("LastMixerIP", ""),
+                RawResponse = Preferences.Get("LastMixerResponse", "")
+            };
+        }
+
+        return null;
+    }
+
+    private async Task ReconnectToLastMixer(MixerInfo mixer)
+    {
+        var success = await Connector.TryConnectToMixer(mixer);//DEZE WERKT NOG NIET
+
+        if (!success)
+        {
+            showReconnectError = true;
+        }
+        else
+        {
+            NavManager.NavigateTo(Routes.Band);
+        }
+    }
 }

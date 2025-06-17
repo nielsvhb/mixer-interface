@@ -1,7 +1,7 @@
 ﻿using ObjCRuntime;
 using UIKit;
 
-namespace MixerInterface;
+namespace Eggbox;
 
 public class Program
 {

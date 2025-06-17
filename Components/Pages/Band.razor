@@ -1,0 +1,18 @@
+﻿@attribute [Route(Routes.Band)]
+@using Eggbox.Services
+@inject MixerConnectorService Connector
+@if (Connector.ConnectedMixerIp is null)
+{
+    <RedirectToScanner />
+}
+<h1 class="text-2xl font-bold mb-4">Band instellingen</h1>
+
+<p>Verbonden met: <strong>@Connector.ConnectedMixerIp</strong></p>
+
+
+@code {
+    private void RedirectToScanner()
+    {
+        NavManager.NavigateTo(Routes.MixerScanner, true);
+    }
+}

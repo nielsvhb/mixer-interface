@@ -1,6 +1,6 @@
 ﻿using Foundation;
 
-namespace MixerInterface;
+namespace Eggbox;
 
 [Register("AppDelegate")]
 public class AppDelegate : MauiUIApplicationDelegate

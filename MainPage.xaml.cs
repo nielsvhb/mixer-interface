@@ -1,4 +1,4 @@
-﻿namespace MixerInterface;
+﻿namespace Eggbox;
 
 public partial class MainPage : ContentPage
 {

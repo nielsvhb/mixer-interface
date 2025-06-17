@@ -2,9 +2,9 @@
 using Blazorise;
 using Blazorise.Tailwind;
 using Blazorise.Icons.FontAwesome;
-using MixerInterface.Services;
+using Eggbox.Services;
 
-namespace MixerInterface;
+namespace Eggbox;
 
 public static class MauiProgram
 {
@@ -20,7 +20,7 @@ public static class MauiProgram
         builder.Services.AddBlazorise();
         builder.Services.AddTailwindProviders();
         builder.Services.AddFontAwesomeIcons();
-        builder.Services.AddSingleton<OscService>();
+        builder.Services.AddSingleton<MixerConnectorService>();
         builder.Services.AddSingleton<MixerScannerService>();
 
 
