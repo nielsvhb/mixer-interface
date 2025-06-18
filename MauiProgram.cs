@@ -21,7 +21,6 @@ public static class MauiProgram
         builder.Services.AddTailwindProviders();
         builder.Services.AddFontAwesomeIcons();
         builder.Services.AddSingleton<MixerConnectorService>();
-        builder.Services.AddSingleton<MixerScannerService>();
 
 
 #if DEBUG

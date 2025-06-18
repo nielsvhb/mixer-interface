@@ -2,7 +2,6 @@
 
 @using Microsoft.Maui.Storage;
 @using Eggbox.Services
-@inject MixerScannerService ScannerService
 @inject MixerConnectorService Connector
 
 <div class="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
@@ -55,7 +54,7 @@
         foundMixers.Clear();
         StateHasChanged();
 
-        foundMixers = await ScannerService.ScanAsync();
+        foundMixers = await Connector.ScanAsync();
 
         isLoading = false;
         StateHasChanged();
