@@ -1,7 +1,7 @@
 ﻿@attribute [Route(Routes.MixerScanner)]
 
-@using Microsoft.Maui.Storage;
 @using Eggbox.Services
+@using Eggbox.Models
 @inject MixerConnectorService Connector
 
 <div class="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
@@ -22,7 +22,7 @@
                 @foreach (var mixer in foundMixers)
                 {
                     <div class="p-4 rounded-2xl shadow-inner bg-gray-100 hover:shadow-neumorphic-light transition">
-                        <div class="font-semibold text-gray-700">IP: @mixer.IPAddress</div>
+                        <div class="font-semibold text-gray-700">IP: @mixer.IpAddress</div>
                         <div class="text-sm text-gray-500 break-all">@mixer.RawResponse</div>
                         
                         <button @onclick="@(() => SelectMixer(mixer))">
@@ -69,7 +69,6 @@
 
     private void SaveSelectedMixer(MixerInfo mixer)
     {
-        Preferences.Set("LastMixerIP", mixer.IPAddress);
-        Preferences.Set("LastMixerResponse", mixer.RawResponse);
+        Storage.Set(StorageKeys.LastMixer, mixer);
     }
 }
