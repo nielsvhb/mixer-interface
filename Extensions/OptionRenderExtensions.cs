@@ -1,6 +1,6 @@
 ﻿using Optional;
 
-namespace Eggbox.Exntensions;
+namespace Eggbox.Extensions;
 
 using Microsoft.AspNetCore.Components;
 

@@ -2,79 +2,81 @@
 @using Eggbox.Services
 @using Eggbox.Models
 @using Optional
-@using Eggbox.Exntensions;
+@using Eggbox.Extensions;
 @inject MixerConnectorService Connector
 
-<section class="container">
-    <h1 class="text-red-500 text-xl font-semibold tracking-wide">MIXING INTERFACE</h1>
-    <p class="mt-4 text-gray-600">
-        Welcome to your mixing app.
-    </p>
-    
-    @lastMixer.Render(lm => 
-        @<div>
-            
-            <div class="mb-4 text-center">
-                <p class="text-gray-700">Last mixer used: <strong>@lm.IpAddress</strong></p>
-                <button class="mt-2 px-4 py-2 bg-green-200 rounded-xl hover:bg-green-300 transition"
-                        @onclick="() => ReconnectToLastMixer(lm)">
-                    Connect
-                </button>
+<section class="h-screen py-5 bg-gradient-to-b from-primary to-primary-dark text-gray-200">
+    <div class="container flex flex-col h-full">
+        <article class="mt-32">
+            <h1 class="text-white text-5xl font-bold font-fredoka text-center">EggBox</h1>
+            <p class="mt-4 text-gray-100 text-center">
+                Choose a mixer on your Wi-Fi network to connect with.
+            </p>
+
+            @_lastMixer.Render(lm =>
+                @<div>
+                    <div>
+                        Previously connected
+                    </div>
+                    <MixerCard Mixer="lm" OnForget="ForgetLastMixer"/>
             </div>
-        @if (showReconnectError)
-        {
-            <div class="p-4 mt-4 rounded-xl bg-yellow-100 border border-yellow-300 text-yellow-800 shadow-neumorphic-light">
-                <p>Kan geen verbinding maken met <strong>@lm.IpAddress</strong>.</p>
-                <p>Staat de mixer aan en is deze verbonden met hetzelfde wifi-netwerk?</p>
-                
-                <div class="mt-4 flex gap-4 justify-center">
-                    <button @onclick="()=>ReconnectToLastMixer(lm)" class="px-4 py-2 bg-gray-200 rounded-xl hover:bg-gray-300">Opnieuw proberen</button>
-                    <button @onclick="()=>ForgetLastMixer()" class="px-4 py-2 bg-red-200 text-red-800 rounded-xl hover:bg-red-300">Mixer vergeten</button>
+            )
+
+            @if (_hasScanned)
+            {
+                <div class="mt-20">
+                    @foreach (var mixer in _foundMixers)
+                    {
+                        <MixerCard Mixer="mixer" />
+                    }
                 </div>
-            </div>
-        }
-
-        </div>)
-    
-   
-
-    
-    <NavLink href="@Routes.MixerScanner" class="mt-10">Mixer zoeken</NavLink>
-
+            }
+        </article>
+        <button @onclick="ScanMixers" class="mt-auto btn" disabled="@_isLoading">
+            Search for mixers
+            @if (_isLoading)
+            {
+                <i class="far fa-spinner animate-spin"></i>
+            }
+        </button>
+    </div>
 </section>
 
 @code {
-    private Option<MixerInfo> lastMixer;
-    private bool showReconnectError = false;
+    private List<MixerInfo> _foundMixers = new();
+    private Option<MixerInfo> _lastMixer;
+    private bool _isLoading = false;
+    private bool _hasScanned = false;
 
-    private void ForgetLastMixer()
+    private Task ForgetLastMixer(MixerInfo _)
     {
         Storage.Remove(StorageKeys.LastMixer);
-        lastMixer = Option.None<MixerInfo>();
-        showReconnectError = false;
+        _lastMixer = Option.None<MixerInfo>();
+        return Task.CompletedTask;
     }
-    
-    protected override async Task OnInitializedAsync()
+
+    protected override void OnInitialized()
     {
-        lastMixer = LoadLastMixer();
+        _lastMixer = LoadLastMixer();
     }
-    
+
     private Option<MixerInfo> LoadLastMixer()
     {
         return Storage.Get(StorageKeys.LastMixer);
     }
+    
 
-    private async Task ReconnectToLastMixer(MixerInfo mixer)
+    private async Task ScanMixers()
     {
-        var success = await Connector.TryConnectToMixer(mixer);//DEZE WERKT NOG NIET
+        _hasScanned = true;
+        _isLoading = true;
+        _foundMixers.Clear();
+        StateHasChanged();
 
-        if (!success)
-        {
-            showReconnectError = true;
-        }
-        else
-        {
-            NavManager.NavigateTo(Routes.Band);
-        }
+        _foundMixers = await Connector.ScanAsync();
+
+        _isLoading = false;
+        StateHasChanged();
     }
+
 }

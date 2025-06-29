@@ -117,9 +117,17 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         ConnectedMixerIp = Option.None<string>();
     }
 
-    public void SetFaderLevel(string channel, float level)
+    public void SendCommand(string address, string command)
     {
-        _client?.Send($"/{channel}/fader", level); // bv. "/ch/01/mix/fader"
+        _client?.Send(address, command); 
+    }
+    public void SendCommand(string address, float command)
+    {
+        _client?.Send(address, command); 
+    }
+    public void SendCommand(string address, int command)
+    {
+        _client?.Send(address, command); 
     }
     
 
@@ -146,7 +154,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
             : Option.None<string>();
     }
     
-    private static string GetLocalIpAddress()
+    public string GetLocalIpAddress()
     {
         foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
         {
@@ -167,7 +175,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         throw new Exception("Geen geldig IP-adres gevonden.");
     }
 
-    private static string GetLocalSubnet()
+    private string GetLocalSubnet()
     {
         var localIp = GetLocalIpAddress(); // bv. 192.168.1.42
         var parts = localIp.Split('.');

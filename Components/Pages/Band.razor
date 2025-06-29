@@ -1,19 +1,80 @@
 ﻿@attribute [Route(Routes.Band)]
 @using Eggbox.Services
-@using Eggbox.Exntensions
+@using Eggbox.Extensions
 @inject MixerConnectorService Connector
 @if (Connector.ConnectedMixerIp.HasValue)
 {
-    <RedirectToScanner />
+    NavManager.NavigateTo(Routes.Home, true);
 }
-<h1 class="text-2xl font-bold mb-4">Band instellingen</h1>
-
 <p>Verbonden met: <strong>@Connector.ConnectedMixerIp.Render()</strong></p>
+
+
+<div class="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-6">
+    <div class="w-full max-w-md p-6 bg-gray-100 rounded-3xl shadow-neumorphic text-gray-800">
+        <h2 class="text-2xl font-bold mb-4 text-center">OSC Test Tool</h2>
+
+        <div class="mb-4">
+            <label class="block text-sm font-semibold mb-1">OSC Address</label>
+            <input type="text" class="w-full p-3 rounded-xl shadow-inner bg-white"
+                   @bind="oscAddress" placeholder="/ch/01/mix/fader" />
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-sm font-semibold mb-1">OSC Value</label>
+            <input type="text" class="w-full p-3 rounded-xl shadow-inner bg-white"
+                   @bind="oscValue" placeholder="0.75" />
+        </div>
+
+        <button class="w-full py-2 bg-gray-200 rounded-xl shadow-neumorphic hover:shadow-neumorphic-inset font-semibold transition"
+                @onclick="SendCommand">
+            Verstuur Commando
+        </button>
+
+        @if (sendResult != null)
+        {
+            <div class="mt-4 text-center font-medium" style="color: @(sendResult == "OK" ? "green" : "red")">
+                @sendResult
+            </div>
+        }
+    </div>
+</div>
+
 
 
 @code {
     private void RedirectToScanner()
     {
-        NavManager.NavigateTo(Routes.MixerScanner, true);
+        NavManager.NavigateTo(Routes.Home, true);
+    }
+    
+    private string oscAddress = string.Empty;
+    private string oscValue = string.Empty;
+    private string? sendResult;
+
+    private async Task SendCommand()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(oscAddress))
+            {
+                sendResult = "OSC address mag niet leeg zijn.";
+                return;
+            }
+            
+            // Probeer getaltypes automatisch te herkennen
+            if (int.TryParse(oscValue, out var intVal))
+                Connector.SendCommand(oscAddress, intVal);
+            if (float.TryParse(oscValue, out var floatVal))
+                Connector.SendCommand(oscAddress, floatVal);
+            else
+                Connector.SendCommand(oscAddress, oscValue);
+
+           
+            sendResult = "OK";
+        }
+        catch (Exception ex)
+        {
+            sendResult = $"Error: {ex.Message}";
+        }
     }
 }
