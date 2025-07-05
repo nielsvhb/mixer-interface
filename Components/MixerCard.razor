@@ -1,60 +1,46 @@
 ﻿@using Eggbox.Models
 @using Eggbox.Services
 @inject MixerConnectorService Connector
-<div class="relative p-3 rounded-2xl transition overflow-hidden border border-gray-100/60 bg-white/30 backdrop-blur-sm">
+@inject NavigationManager NavManager
 
-    @if (_isLoading)
-    {
-        <div class="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center z-10">
-            <div class="w-6 h-6 border-4 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-        </div>
-    }
+<div class="relative p-3 rounded-2xl overflow-hidden bg-white/30 backdrop-blur-sm border border-gray-100/60
+            transition-transform duration-200 ease-in-out
+            @(isAnimating ? "scale-95 opacity-70" : "scale-100 opacity-100")"
+     @onclick="SelectAsync">
 
-    <div class="@(!_isLoading ? "" : "opacity-30") transition-opacity duration-300 flex gap-10 items-center w-full" @onclick="SelectAsync">
+    <div class="transition-opacity duration-300 flex gap-10 items-center w-full">
         <div class="grow">
             <div class="font-semibold text-white">IP: @Mixer.IpAddress</div>
             <div class="text-sm text-gray-200">@Mixer.Type</div>
         </div>
         <div class="items-center flex">
-            <i class="text-2xl far fa-circle-play"></i>
+            <i class="text-2xl fas fa-circle-play"></i>
         </div>
-
-        @if (_error != null)
-        {
-            <div class="mt-4 p-3 rounded-xl bg-yellow-100 border border-yellow-300 text-yellow-800 text-sm">
-                <p>❌ @_error</p>
-            </div>
-        }
-
-       @* @if (OnForget.HasDelegate) *@
-       @* { *@
-       @*     <button @onclick="@(() => OnForget.InvokeAsync(Mixer))" *@
-       @*             class="ml-2 px-4 py-2 rounded-xl bg-accent hover:bg-red-300 text-red-800 text-sm"> *@
-       @*         Vergeet *@
-       @*     </button> *@
-       @* } *@
     </div>
 </div>
 
 @code {
     [Parameter] public MixerInfo Mixer { get; set; } = default!;
-    [Parameter] public EventCallback<MixerInfo> OnForget { get; set; }
 
-    private bool _isLoading = false;
-    private string? _error;
-    
+    private bool isAnimating;
+
     private async Task SelectAsync()
     {
-        try
-        {
-            Connector.Connect(Mixer);
-            NavManager.NavigateTo(Routes.Band);
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-        _isLoading = false;
+        if (isAnimating) 
+            return;
+
+        // Zet animatieflag aan
+        isAnimating = true;
+        StateHasChanged();
+
+        // Wacht tot animatie (duration-200) is afgerond
+        await Task.Delay(200);
+
+        // Doe de connectie en navigatie
+        Connector.Connect(Mixer);
+        NavManager.NavigateTo(Routes.Band);
+
+        // (optioneel) reset animatieflag voor wanneer je ooit terugkomt
+        isAnimating = false;
     }
-    
 }
