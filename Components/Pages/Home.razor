@@ -3,6 +3,7 @@
 @using Eggbox.Models
 @using Optional
 @using Eggbox.Extensions;
+@using Blazorise.Extensions
 @inject MixerConnectorService Connector
 
 <section class="h-screen bg-gradient-to-b from-primary to-primary-dark text-gray-200">
@@ -13,21 +14,26 @@
                 Choose a mixer on your Wi-Fi network to connect with.
             </p>
 
-            @_lastMixer.Render(lm =>
-                @<div>
-                    <div>
-                        Previously connected
-                    </div>
-                    <MixerCard Mixer="lm" OnForget="ForgetLastMixer"/>
-            </div>
-            )
+            @* @_lastMixer.Render(lm => *@
+            @*     @<div> *@
+            @*         <div> *@
+            @*             Previously connected *@
+            @*         </div> *@
+            @*         <MixerCard Mixer="lm" OnForget="ForgetLastMixer"/> *@
+            @* </div> *@
+            @* ) *@
 
             @if (_hasScanned)
             {
                 <div class="mt-20">
+                    @if (!_isLoading && _foundMixers.IsNullOrEmpty())
+                    {
+                        <p>No mixers found. Please make sure you are conencted with the same Wi-Fi network as the mixer.</p>
+                    }
+                    
                     @foreach (var mixer in _foundMixers)
                     {
-                        <MixerCard Mixer="mixer" />
+                        <MixerCard Mixer="mixer"/>
                     }
                 </div>
             }
@@ -73,7 +79,7 @@
         _foundMixers.Clear();
         StateHasChanged();
 
-        _foundMixers = await Connector.ScanAsync();
+        _foundMixers = await Connector.ScanViaBroadcast();
 
         _isLoading = false;
         StateHasChanged();

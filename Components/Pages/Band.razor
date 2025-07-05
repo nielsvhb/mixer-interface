@@ -2,7 +2,7 @@
 @using Eggbox.Services
 @using Eggbox.Extensions
 @inject MixerConnectorService Connector
-@if (Connector.ConnectedMixerIp.HasValue)
+@if (!Connector.ConnectedMixerIp.HasValue)
 {
     NavManager.NavigateTo(Routes.Home, true);
 }
@@ -42,11 +42,6 @@
 
 
 @code {
-    private void RedirectToScanner()
-    {
-        NavManager.NavigateTo(Routes.Home, true);
-    }
-    
     private string oscAddress = string.Empty;
     private string oscValue = string.Empty;
     private string? sendResult;

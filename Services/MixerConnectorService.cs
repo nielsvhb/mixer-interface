@@ -6,6 +6,10 @@ using BuildSoft.OscCore;
 using Eggbox.Models;
 using Microsoft.Extensions.Logging;
 using Optional;
+#if ANDROID
+using Android.Net.Wifi;
+using Android.Content;
+#endif
 
 namespace Eggbox.Services;
 
@@ -16,89 +20,90 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
     private OscClient? _client;
     private const int Port = 10024;
 
-    public async Task<List<MixerInfo>> ScanAsync()
-    {
-        var foundMixers = new List<MixerInfo>();
-        var subnet = GetLocalSubnet(); // bv. "192.168.129"
-        var port = 10024;
-
-        logger.LogInformation("Start scan op subnet {subnet}.x", subnet);
-
-        var tasks = new List<Task>();
-
-        for (int i = 1; i < 255; i++)
-        {
-            var ip = $"{subnet}.{i}";
-            tasks.Add(Task.Run(async () =>
-            {
-                try
-                {
-                    using var client = new UdpClient();
-                    client.Client.ReceiveTimeout = 500;
-
-                    var endpoint = new IPEndPoint(IPAddress.Parse(ip), port);
-                    var oscBytes = Encoding.ASCII.GetBytes("/xinfo");
-
-                    await client.SendAsync(oscBytes, oscBytes.Length, endpoint);
-
-                    // Luister op zelfde client
-                    var receiveTask = client.ReceiveAsync();
-                    var timeoutTask = Task.Delay(500); // 500ms per IP
-
-                    var completed = await Task.WhenAny(receiveTask, timeoutTask);
-                    if (completed == receiveTask)
-                    {
-                        var result = receiveTask.Result;
-                        var response = Encoding.ASCII.GetString(result.Buffer);
-
-                        if (IsMixerResponse(response))
-                        {
-                            lock (foundMixers)
-                            {
-                                foundMixers.Add(new MixerInfo
-                                {
-                                    IpAddress = ip,
-                                    RawResponse = response
-                                });
-                                logger.LogInformation("Mixer gevonden op {ip}: {response}", ip, response);
-                            }
-                        }
-                    }
-                }
-                catch
-                {
-                    // stilletjes negeren – geen mixer op dit IP
-                }
-            }));
-        }
-
-        await Task.WhenAll(tasks);
-
-        logger.LogInformation("Scan voltooid. Mixers gevonden: {count}", foundMixers.Count);
-        return foundMixers;
-    }
     
-    public async Task<bool> TryConnectToMixer(MixerInfo mixer)
+#if ANDROID
+    private WifiManager.MulticastLock? _multicastLock;
+
+    private void AcquireMulticastLock()
     {
+        var context = Android.App.Application.Context;
+        var wifiManager = (WifiManager)context.GetSystemService(Context.WifiService)!;
+
+        _multicastLock = wifiManager.CreateMulticastLock("eggbox-multicast-lock");
+        _multicastLock.SetReferenceCounted(true);
+        _multicastLock.Acquire();
+    }
+
+    private void ReleaseMulticastLock()
+    {
+        if (_multicastLock?.IsHeld == true)
+        {
+            _multicastLock.Release();
+            _multicastLock = null;
+        }
+    }
+#endif
+    
+    public async Task<List<MixerInfo>> ScanViaBroadcast()
+    {
+        #if ANDROID
+                AcquireMulticastLock();
+        #endif
+
         try
         {
-            var response = await SendInfoRequest(mixer.IpAddress);
-            var received = response.Map(IsMixerResponse).ValueOr(false);
-            
-            if(received)
-                Connect(mixer);
-            
-            return received;
+            var foundMixers = new List<MixerInfo>();
+            var port = Port;
+            var broadcastAddress = IPAddress.Broadcast;
+            var oscMessage = Encoding.ASCII.GetBytes("/xinfo");
+    
+            using var udpClient = new UdpClient();
+            udpClient.EnableBroadcast = true;
+            udpClient.Client.ReceiveTimeout = 2000;
+    
+            logger.LogInformation("Broadcasting /xinfo naar 255.255.255.255:{port}", port);
+    
+            await udpClient.SendAsync(oscMessage, oscMessage.Length, new IPEndPoint(broadcastAddress, port));
+    
+            var timeoutMs = 2000;
+            var started = DateTime.UtcNow;
+            while ((DateTime.UtcNow - started).TotalMilliseconds < timeoutMs)
+            {
+                var remainingTime = timeoutMs - (int)(DateTime.UtcNow - started).TotalMilliseconds;
+                if (remainingTime <= 0) break;
+
+                var receiveTask = udpClient.ReceiveAsync();
+                var timeoutTask = Task.Delay(remainingTime);
+
+                var completed = await Task.WhenAny(receiveTask, timeoutTask);
+                if (completed == receiveTask)
+                {
+                    var result = await receiveTask;
+                    var ip = result.RemoteEndPoint.Address.ToString();
+                    var response = Encoding.ASCII.GetString(result.Buffer);
+
+                    if (IsMixerResponse(response) && !foundMixers.Any(m => m.IpAddress == ip))
+                    {
+                        foundMixers.Add(new MixerInfo(ip, response));
+                        logger.LogInformation("Mixer gevonden op {ip}: {response}", ip, response);
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
+    
+            logger.LogInformation("Scan voltooid. Mixers gevonden: {count}", foundMixers.Count);
+            return foundMixers;
         }
-        catch (SocketException)
+        finally
         {
-            return false;
+            #if ANDROID
+                        ReleaseMulticastLock();
+            #endif
         }
-        catch (Exception ex)
-        {
-            logger.LogInformation($"Fout bij verbinding met mixer: {ex.Message}");
-            return false;
-        }
+        
     }
 
     public void Connect(MixerInfo mixer)
@@ -130,61 +135,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         _client?.Send(address, command); 
     }
     
-
-    private static async Task<Option<string>> SendInfoRequest(string ip)
-    {
-        using var client = new UdpClient();
-        client.Client.ReceiveTimeout = 500;
-
-        var endpoint = new IPEndPoint(IPAddress.Parse(ip), Port);
-        var oscBytes = Encoding.ASCII.GetBytes("/xinfo");
-
-        await client.SendAsync(oscBytes, oscBytes.Length, endpoint);
-        
-        var receiveTask = client.ReceiveAsync();
-
-        var completed = await Task.WhenAny(receiveTask, Task.Delay(500));
-        while (!Task.Delay(2000).IsCompleted)
-        {
-            await Task.Delay(50); // kleine delay om CPU niet te belasten
-        }
-
-        return completed == receiveTask 
-            ? Encoding.ASCII.GetString(receiveTask.Result.Buffer).SomeNotNull() 
-            : Option.None<string>();
-    }
-    
-    public string GetLocalIpAddress()
-    {
-        foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
-        {
-            if (ni.OperationalStatus != OperationalStatus.Up)
-                continue;
-
-            var ipProps = ni.GetIPProperties();
-            foreach (var addr in ipProps.UnicastAddresses)
-            {
-                if (addr.Address.AddressFamily == AddressFamily.InterNetwork &&
-                    !IPAddress.IsLoopback(addr.Address))
-                {
-                    return addr.Address.ToString();
-                }
-            }
-        }
-
-        throw new Exception("Geen geldig IP-adres gevonden.");
-    }
-
-    private string GetLocalSubnet()
-    {
-        var localIp = GetLocalIpAddress(); // bv. 192.168.1.42
-        var parts = localIp.Split('.');
-        return $"{parts[0]}.{parts[1]}.{parts[2]}"; // 192.168.1
-    }
-
     private static bool IsMixerResponse(string response)
-    {
-        var r = response.ToLowerInvariant();
-        return r.Contains("xinfo");
-    }
+        => response.ToLowerInvariant().Contains("xinfo");
+    
 }

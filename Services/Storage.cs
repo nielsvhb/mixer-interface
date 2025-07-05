@@ -42,5 +42,5 @@ public static class StorageKeys
 {
     public sealed record StorageKey<T>(string Key);
     
-    public static readonly StorageKey<MixerInfo> LastMixer = new("last-mixer");
+    public static readonly StorageKey<MixerInfo> LastMixer = new("last-mixer2");
 }

@@ -343,12 +343,6 @@
   .bg-\[radial-gradient\(\#e5e7eb20_2px\,transparent_2px\)\] {
     background-image: radial-gradient(#e5e7eb20 2px,transparent 2px);
   }
-  .bg-\[radial-gradient\(\#e5e7eb30_2px\,transparent_2px\)\] {
-    background-image: radial-gradient(#e5e7eb30 2px,transparent 2px);
-  }
-  .bg-\[radial-gradient\(\#e5e7eb_1px\,transparent_1px\)\] {
-    background-image: radial-gradient(#e5e7eb 1px,transparent 1px);
-  }
   .from-primary {
     --tw-gradient-from: #FF6666;
     --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
@@ -356,9 +350,6 @@
   .to-primary-dark {
     --tw-gradient-to: #FF5c7D;
     --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
-  }
-  .\[mask-image\:radial-gradient\(ellipse_50\%_50\%_at_50\%_50\%\,\#000_60\%\,transparent_100\%\)\] {
-    mask-image: radial-gradient(ellipse 50% 50% at 50% 50%,#000 60%,transparent 100%);
   }
   .\[background-size\:16px_16px\] {
     background-size: 16px 16px;
@@ -388,10 +379,6 @@
     font-size: var(--text-2xl);
     line-height: var(--tw-leading, var(--text-2xl--line-height));
   }
-  .text-5xl {
-    font-size: var(--text-5xl);
-    line-height: var(--tw-leading, var(--text-5xl--line-height));
-  }
   .text-6xl {
     font-size: var(--text-6xl);
     line-height: var(--tw-leading, var(--text-6xl--line-height));
@@ -399,10 +386,6 @@
   .text-sm {
     font-size: var(--text-sm);
     line-height: var(--tw-leading, var(--text-sm--line-height));
-  }
-  .font-black {
-    --tw-font-weight: var(--font-weight-black);
-    font-weight: var(--font-weight-black);
   }
   .font-bold {
     --tw-font-weight: var(--font-weight-bold);
@@ -435,10 +418,6 @@
     --tw-shadow: inset 0 2px 4px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05));
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
-  .shadow-neumorphic {
-    --tw-shadow: 10px 10px 30px var(--tw-shadow-color, #d1d9e6), -10px -10px 30px var(--tw-shadow-color, #ffffff);
-    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-  }
   .backdrop-blur-sm {
     --tw-backdrop-blur: blur(var(--blur-sm));
     -webkit-backdrop-filter: var(--tw-backdrop-blur,) var(--tw-backdrop-brightness,) var(--tw-backdrop-contrast,) var(--tw-backdrop-grayscale,) var(--tw-backdrop-hue-rotate,) var(--tw-backdrop-invert,) var(--tw-backdrop-opacity,) var(--tw-backdrop-saturate,) var(--tw-backdrop-sepia,);
@@ -457,14 +436,6 @@
   .duration-300 {
     --tw-duration: 300ms;
     transition-duration: 300ms;
-  }
-  .hover\:shadow-neumorphic-inset {
-    &:hover {
-      @media (hover: hover) {
-        --tw-shadow: inset 10px 10px 20px var(--tw-shadow-color, #d1d9e6), inset -10px -10px 20px var(--tw-shadow-color, #ffffff);
-        box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-      }
-    }
   }
 }
 .btn {
