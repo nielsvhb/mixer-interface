@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Diagnostics;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
@@ -6,6 +7,7 @@ using BuildSoft.OscCore;
 using Eggbox.Models;
 using Microsoft.Extensions.Logging;
 using Optional;
+using OscCore;
 #if ANDROID
 using Android.Net.Wifi;
 using Android.Content;
@@ -47,7 +49,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
     public async Task<List<MixerInfo>> ScanViaBroadcast()
     {
         #if ANDROID
-                AcquireMulticastLock();
+        AcquireMulticastLock();
         #endif
 
         try
@@ -100,7 +102,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         finally
         {
             #if ANDROID
-                        ReleaseMulticastLock();
+            ReleaseMulticastLock();
             #endif
         }
         
@@ -122,17 +124,26 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         ConnectedMixerIp = Option.None<string>();
     }
 
-    public void SendCommand(string address, string command)
+    public void SetBusName(int busIndex, string name)
+        => _client?.Send($"/bus/{busIndex}/config/name", name);
+    
+    public void SetBusColor(int busIndex, MixerColor color)
+        => _client?.Send($"/bus/{busIndex}/config/color", color.MappedValue);
+    
+    private async Task<string> SendAndReceiveString(string address, int timeoutMs)
     {
-        _client?.Send(address, command); 
-    }
-    public void SendCommand(string address, float command)
-    {
-        _client?.Send(address, command); 
-    }
-    public void SendCommand(string address, int command)
-    {
-        _client?.Send(address, command); 
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var server = OscServer.GetOrCreate(Port);
+        server.TryAddMethod(address, values =>
+        {
+            var s = values.ReadStringElement(0) ?? "";
+            tcs.TrySetResult(s);
+        });
+
+        _client?.Send(address);
+        var delay = Task.Delay(timeoutMs);
+        var done = await Task.WhenAny(tcs.Task, delay);
+        return done == tcs.Task ? await tcs.Task : "";
     }
     
     private static bool IsMixerResponse(string response)

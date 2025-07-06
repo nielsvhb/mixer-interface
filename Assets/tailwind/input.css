@@ -5,3 +5,7 @@
 .btn {
     @apply px-6 py-2 bg-white rounded-xl transition text-gray-600 font-semibold disabled:opacity-40 disabled:cursor-not-allowed;
 }
+
+.btn.btn-primary {
+    @apply text-white bg-gradient-to-br from-primary to-primary-dark hover:bg-gradient-to-bl focus:ring-4 focus:outline-none focus:ring-primary
+}
