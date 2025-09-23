@@ -60,7 +60,6 @@
     <ItemGroup>
         <PackageReference Include="Blazorise.Icons.FontAwesome" Version="1.7.7" />
         <PackageReference Include="Blazorise.Tailwind" Version="1.7.7" />
-        <PackageReference Include="BuildSoft.OscCore" Version="1.2.1.1" />
         <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)"/>
         <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="$(MauiVersion)"/>
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)"/>

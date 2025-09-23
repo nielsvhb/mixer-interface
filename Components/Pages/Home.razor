@@ -4,7 +4,10 @@
 @using Optional
 @using Eggbox.Extensions;
 @using Blazorise.Extensions
+@using Microsoft.Extensions.Logging
+@using OscCore
 @inject MixerConnectorService Connector
+@inject ILogger<UdpOscClient> Logger
 
 <section class="h-screen bg-gradient-to-b from-primary to-primary-dark text-gray-200">
     <div class="container flex flex-col h-full py-5 bg-[radial-gradient(#e5e7eb20_2px,transparent_2px)] [background-size:16px_16px]">
@@ -20,7 +23,7 @@
             @*             Previously connected *@
             @*         </div> *@
             @*         <MixerCard Mixer="lm" OnForget="ForgetLastMixer"/> *@
-            @* </div> *@
+            @* </div> *@x
             @* ) *@
 
             @if (_hasScanned)
@@ -60,7 +63,7 @@
         _lastMixer = Option.None<MixerInfo>();
         return Task.CompletedTask;
     }
-
+    
     protected override void OnInitialized()
     {
         _lastMixer = LoadLastMixer();

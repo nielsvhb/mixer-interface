@@ -3,7 +3,6 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
-using BuildSoft.OscCore;
 using Eggbox.Models;
 using Microsoft.Extensions.Logging;
 using Optional;
@@ -19,9 +18,12 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
 {
     public Option<string> ConnectedMixerIp { get; private set; }
 
-    private OscClient? _client;
+    private UdpOscClient? _client;
     private const int Port = 10024;
-
+    private readonly Dictionary<int, string> _busNames = new();
+    private readonly Dictionary<int, MixerColor> _busColors = new();
+    public IReadOnlyDictionary<int, string> BusNames => _busNames;
+    public IReadOnlyDictionary<int, MixerColor> BusColors => _busColors;
     
 #if ANDROID
     private WifiManager.MulticastLock? _multicastLock;
@@ -45,6 +47,40 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         }
     }
 #endif
+    public event Action<int, string, MixerColor>? OnBusUpdated;
+
+    private void UpdateBus(int index, string? name = null, MixerColor? color = null)
+    {
+        bool changed = false;
+
+        if (name != null && (!_busNames.ContainsKey(index) || _busNames[index] != name))
+        {
+            _busNames[index] = name;
+            changed = true;
+        }
+
+        if (color != null && (!_busColors.ContainsKey(index) || _busColors[index] != color))
+        {
+            _busColors[index] = color;
+            changed = true;
+        }
+
+        if (changed)
+            OnBusUpdated?.Invoke(index, _busNames.GetValueOrDefault(index, ""), _busColors.GetValueOrDefault(index, MixerColor.Red));
+    }
+    
+    public void InitializeBusState(int maxBus = 6)
+    {
+        if (_client == null) return;
+
+        for (int bus = 1; bus <= maxBus; bus++)
+        {
+            _client.SendAsync(new OscMessage($"/bus/{bus}/config/name"));
+            _client.SendAsync(new OscMessage($"/bus/{bus}/config/color"));
+        }
+
+        // de PacketReceived handler van _client verwerkt de antwoorden en vult _busNames/_busColors
+    }
     
     public async Task<List<MixerInfo>> ScanViaBroadcast()
     {
@@ -55,7 +91,6 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         try
         {
             var foundMixers = new List<MixerInfo>();
-            var port = Port;
             var broadcastAddress = IPAddress.Broadcast;
             var oscMessage = Encoding.ASCII.GetBytes("/xinfo");
     
@@ -63,9 +98,9 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
             udpClient.EnableBroadcast = true;
             udpClient.Client.ReceiveTimeout = 2000;
     
-            logger.LogInformation("Broadcasting /xinfo naar 255.255.255.255:{port}", port);
+            logger.LogInformation("Broadcasting /xinfo naar 255.255.255.255:{port}", Port);
     
-            await udpClient.SendAsync(oscMessage, oscMessage.Length, new IPEndPoint(broadcastAddress, port));
+            await udpClient.SendAsync(oscMessage, oscMessage.Length, new IPEndPoint(broadcastAddress, Port));
     
             var timeoutMs = 2000;
             var started = DateTime.UtcNow;
@@ -113,10 +148,35 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         var ip = mixer.IpAddress;
         Storage.Set(StorageKeys.LastMixer, mixer);
         Disconnect(); // als er al een verbinding is
-        _client = new OscClient(ip, Port);
+        _client = new UdpOscClient(ip, Port, logger);
+        
+        _client.PacketReceived += (sender, packet) =>
+        {
+            if (packet is OscMessage msg)
+            {
+                if (msg.Address.EndsWith("/config/name"))
+                {
+                    int busIndex = ExtractBusIndex(msg.Address);
+                    string name = msg[0]?.ToString() ?? string.Empty;
+                    _busNames[busIndex] = name;
+                    OnBusUpdated?.Invoke(busIndex, name, _busColors.GetValueOrDefault(busIndex, MixerColor.Red));
+                }
+                else if (msg.Address.EndsWith("/config/color"))
+                {
+                    int busIndex = ExtractBusIndex(msg.Address);
+                    MixerColor color = MixerColor.FromMappedValue(Convert.ToInt32(msg[0])).ValueOr(MixerColor.Red);
+                    _busColors[busIndex] = color;
+                    OnBusUpdated?.Invoke(busIndex, _busNames.GetValueOrDefault(busIndex, ""), color);
+                }
+            }
+        };
         ConnectedMixerIp = ip.SomeNotNull();
     }
-
+    private static int ExtractBusIndex(string address)
+    {
+        var parts = address.Split('/');
+        return int.Parse(parts[2]); // /bus/{index}/config/...
+    }
     public void Disconnect()
     {
         _client?.Dispose();
@@ -125,27 +185,16 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
     }
 
     public void SetBusName(int busIndex, string name)
-        => _client?.Send($"/bus/{busIndex}/config/name", name);
-    
-    public void SetBusColor(int busIndex, MixerColor color)
-        => _client?.Send($"/bus/{busIndex}/config/color", color.MappedValue);
-    
-    private async Task<string> SendAndReceiveString(string address, int timeoutMs)
     {
-        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var server = OscServer.GetOrCreate(Port);
-        server.TryAddMethod(address, values =>
-        {
-            var s = values.ReadStringElement(0) ?? "";
-            tcs.TrySetResult(s);
-        });
+         _client?.SendAsync(new OscMessage($"/bus/{busIndex}/config/name", name));
+    }
 
-        _client?.Send(address);
-        var delay = Task.Delay(timeoutMs);
-        var done = await Task.WhenAny(tcs.Task, delay);
-        return done == tcs.Task ? await tcs.Task : "";
+    public void SetBusColor(int busIndex, MixerColor color)
+    {
+        _client?.SendAsync(new OscMessage($"/bus/{busIndex}/config/color", color.MappedValue));
     }
     
+
     private static bool IsMixerResponse(string response)
         => response.ToLowerInvariant().Contains("xinfo");
     

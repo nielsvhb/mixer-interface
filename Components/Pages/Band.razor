@@ -13,30 +13,30 @@
     <div class="mt-10">
         <h1 class="text-2xl text-gray-600 font-medium font-fredoka text-center mb-5">Who's in the band?</h1>
     </div>
-  
     
-  @if (_showError)
+    @if (_showError)
     {
-      <div class="mb-4 text-gray-700 italic">
-        Please fill in at least one band member.
-      </div>
-    }
-  
-    <div class="space-y-3.5 mb-6">
-      @foreach(var bandMember in _bandMembers)
-      {
-        <div class="flex gap-5 w-full items-center">
-          <div class="h-4 w-4 rounded-sm border border-gray-200"
-               style="background-color:@bandMember.Color.HexCode"></div>
-          
-          <InputText  type="text"
-                 class="bg-gray-100 border border-gray-200 py-2.5 px-5 text-gray-700 grow rounded-lg"
-                 placeholder="Name of band member"
-                 @bind-Value="bandMember.Name" />
+        <div class="mb-4 text-gray-700 italic">
+            Please fill in at least one band member.
         </div>
-      }
+    }
+
+    <div class="space-y-3.5 mb-6">
+        @foreach (var bus in _buses)
+        {
+            <div class="flex gap-5 w-full items-center">
+                <div class="h-4 w-4 rounded-sm border border-gray-200"
+                     style="background-color:@bus.Color.HexCode"></div>
+
+                <InputText type="text"
+                           class="bg-gray-100 border border-gray-200 py-2.5 px-5 text-gray-700 grow rounded-lg"
+                           placeholder="Name of band member"
+                           @bind-Value="bus.Name"/>
+            </div>
+        }
     </div>
-  
+
+
     <button @onclick="SaveAll" class="btn btn-primary mt-auto">
       Next
     </button>
@@ -44,16 +44,39 @@
 
 
 @code {
-    private readonly List<BusConfig> _bandMembers = Enumerable
-        .Range(1, 6)
-        .Select(i => new BusConfig { Index = i, Color = MixerColor.FromMappedValue(i).ValueOr(MixerColor.Red) })
-        .ToList();
+    private List<BusConfig> _buses = new();
+    
+    protected override void OnInitialized()
+    {
+        _buses = Enumerable.Range(1, 6)
+            .Select(i => new BusConfig
+            {
+                Index = i,
+                Name = Connector.BusNames.GetValueOrDefault(i, ""),
+                Color = Connector.BusColors.GetValueOrDefault(i, MixerColor.FromMappedValue(i).ValueOr(MixerColor.Red))
+            })
+            .ToList();
 
+        Connector.OnBusUpdated += HandleBusUpdate;
+
+        Connector.InitializeBusState(6); // vraagt direct de actuele state van de mixer op
+    }
+    
+    private void HandleBusUpdate(int index, string name, MixerColor color)
+    {
+        var bus = _buses.FirstOrDefault(b => b.Index == index);
+        if (bus != null)
+        {
+            bus.Name = name;
+            bus.Color = color;
+            InvokeAsync(StateHasChanged);
+        }
+    }
     private bool _showError = false;
-
+    
     private void SaveAll()
     {
-        if (!_bandMembers.Any(b => !b.Name.IsNullOrEmpty()))
+        if (!_buses.Any(b => !b.Name.IsNullOrEmpty()))
         {
             _showError = true;
             return;
@@ -61,7 +84,7 @@
 
         _showError = false;
 
-        foreach (var bus in _bandMembers.Where(b => !b.Name.IsNullOrEmpty()))
+        foreach (var bus in _buses.Where(b => !b.Name.IsNullOrEmpty()))
         {
             Connector.SetBusName(bus.Index, bus.Name);
             Connector.SetBusColor(bus.Index, bus.Color);
