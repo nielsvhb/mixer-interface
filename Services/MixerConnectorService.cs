@@ -56,21 +56,40 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
     public async Task TryAutoReconnectAsync()
     {
         var lastMixer = Storage.Get<MixerInfo?>(StorageKeys.LastMixer);
+        bool hadPreviousMixer = false;
+
         await lastMixer.MatchSomeAsync(async lm =>
         {
+            hadPreviousMixer = true;
+
+            var wifiState = CheckWifiMismatch(lm.IpAddress);
+            if (wifiState == ConnectState.WifiMismatch)
+            {
+                OnConnectionStateChanged?.Invoke(ConnectState.WifiMismatch);
+                return;
+            }
+
             OnConnectionStateChanged?.Invoke(ConnectState.Connecting);
-            
+
             Connect(lm);
-            var success = await PingMixerAsync(lm.IpAddress); // stuur /xinfo en wacht max 500ms
+
+            var success = await PingMixerAsync(lm.IpAddress);
             if (success)
             {
                 OnConnectionStateChanged?.Invoke(ConnectState.Connected);
             }
-            
+            else
+            {
+                OnConnectionStateChanged?.Invoke(ConnectState.ScanRequired);
+            }
         });
-      
-        OnConnectionStateChanged?.Invoke(ConnectState.ScanRequired);
+
+        if (!hadPreviousMixer)
+        {
+            OnConnectionStateChanged?.Invoke(ConnectState.ScanRequired);
+        }
     }
+
     private async Task<bool> PingMixerAsync(string ip, int timeoutMs = 500)
     {
         if (_client == null)
@@ -179,10 +198,55 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         }
         
     }
+    
+    private static string GetLocalSubnet()
+    {
+        foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (ni.OperationalStatus != OperationalStatus.Up)
+                continue;
 
+            var ipProps = ni.GetIPProperties();
+            foreach (var unicast in ipProps.UnicastAddresses)
+            {
+                if (unicast.Address.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    // neem eerste 3 octetten als subnet, bv. 192.168.1.
+                    var bytes = unicast.Address.GetAddressBytes();
+                    return $"{bytes[0]}.{bytes[1]}.{bytes[2]}.";
+                }
+            }
+        }
+
+        throw new InvalidOperationException("Kan geen lokaal IPv4-adres vinden");
+    }
+    
+    private ConnectState CheckWifiMismatch(string mixerIpAddress)
+    {
+        if (!IPAddress.TryParse(mixerIpAddress, out var mixerIp))
+            return ConnectState.WifiMismatch; // ongeldig IP → treat as mismatch
+
+#if ANDROID || IOS
+        var localSubnet = GetLocalSubnet(); // bijv. "192.168.1."
+        var mixerSubnet = string.Join('.', mixerIp.GetAddressBytes().Take(3)) + ".";
+        
+        if (localSubnet != mixerSubnet)
+            return ConnectState.WifiMismatch;
+#endif
+        return ConnectState.Connected; // subnet klopt
+    }
     public void Connect(MixerInfo mixer)
     {
         var ip = mixer.IpAddress;
+        
+        // check Wi-Fi subnet
+        var state = CheckWifiMismatch(ip);
+        if (state == ConnectState.WifiMismatch)
+        {
+            OnConnectionStateChanged?.Invoke(ConnectState.WifiMismatch);
+            return;
+        }
+        
         Storage.Set(StorageKeys.LastMixer, mixer);
         Disconnect(); // als er al een verbinding is
         _client = new UdpOscClient(ip.ToString(), Port, logger);

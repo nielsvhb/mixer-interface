@@ -10,11 +10,7 @@
     <div class="container flex flex-col h-full py-5 bg-[radial-gradient(#e5e7eb20_2px,transparent_2px)] [background-size:16px_16px]">
         <article class="mt-32">
             <h1 class="text-white text-6xl font-bold font-fredoka text-center mb-6">EggBox</h1>
-            @if (_state == ConnectState.Idle)
-           {
-               <p>Idle</p>
-           }
-           @if (_state == ConnectState.Connecting)
+            @if (_state == ConnectState.Connecting)
            {
                <p>Connecting...</p>
            }
@@ -39,6 +35,11 @@
                        <MixerCard Mixer="mixer"/>
                    }
                </div>
+           } else if (_state == ConnectState.WifiMismatch)
+           {
+               <p class="text-red-400">
+                   Your device is not on the same Wi-Fi network as the mixer. Please connect to the correct network.
+               </p>
            }
            </article>
     </div>
@@ -74,6 +75,9 @@
 
     private async Task ScanMixers()
     {
+        if (_state == ConnectState.WifiMismatch)
+            return;
+        
         _state = ConnectState.Connecting;
         StateHasChanged();
 
