@@ -68,9 +68,10 @@
         }
         else if (state == ConnectState.Connected)
         {
-            NavManager.NavigateTo(Routes.Band);
+            Connector.OnBusStateReceived += HandleBusStateReceived;
+            Connector.InitializeBusState(6);
         }
-        InvokeAsync(StateHasChanged);
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ScanMixers()
@@ -86,5 +87,20 @@
         _state = _foundMixers.Any() ? ConnectState.MixersFound : ConnectState.NoMixerFound;
         StateHasChanged();
     }
+    private void HandleBusStateReceived()
+    {
+        Connector.OnBusStateReceived -= HandleBusStateReceived;
 
+        // Check of er ooit channel names zijn ingevuld
+        bool hasNames = Connector.BusNames.Values.Any(name => !string.IsNullOrWhiteSpace(name));
+
+        if (hasNames)
+        {
+            NavManager.NavigateTo(Routes.Dashboard);
+        }
+        else
+        {
+            NavManager.NavigateTo(Routes.Band); // setup page
+        }
+    }
 }

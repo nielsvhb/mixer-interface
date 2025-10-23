@@ -28,6 +28,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
     private TaskCompletionSource<bool>? _pingTcs;
     public event Action<ConnectState>? OnConnectionStateChanged;
     public event Action<int, string, MixerColor>? OnBusUpdated;
+    public event Action? OnBusStateReceived;
 
 
 #if ANDROID
@@ -261,6 +262,8 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
                     string name = msg[0]?.ToString() ?? string.Empty;
                     _busNames[busIndex] = name;
                     OnBusUpdated?.Invoke(busIndex, name, _busColors.GetValueOrDefault(busIndex, MixerColor.Red));
+                    OnBusStateReceived?.Invoke();
+
                     logger.LogInformation("Bus naam geüpdatet {busIndex}: {name}", busIndex, name);
                 }
                 else if (msg.Address.EndsWith("/config/color"))
