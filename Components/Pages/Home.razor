@@ -2,89 +2,84 @@
 @using Eggbox.Services
 @using Eggbox.Models
 @using Optional
-@using Eggbox.Extensions;
-@using Blazorise.Extensions
 @using Microsoft.Extensions.Logging
-@using OscCore
 @inject MixerConnectorService Connector
 @inject ILogger<UdpOscClient> Logger
 
 <section class="h-screen bg-gradient-to-b from-primary to-primary-dark text-gray-200">
     <div class="container flex flex-col h-full py-5 bg-[radial-gradient(#e5e7eb20_2px,transparent_2px)] [background-size:16px_16px]">
         <article class="mt-32">
-            <h1 class="text-white text-6xl font-bold font-fredoka text-center">EggBox</h1>
-            <p class="mt-4 text-gray-100 text-center">
-                Choose a mixer on your Wi-Fi network to connect with.
-            </p>
-
-            @* @_lastMixer.Render(lm => *@
-            @*     @<div> *@
-            @*         <div> *@
-            @*             Previously connected *@
-            @*         </div> *@
-            @*         <MixerCard Mixer="lm" OnForget="ForgetLastMixer"/> *@
-            @* </div> *@
-            @* ) *@
-
-            @if (_hasScanned)
-            {
-                <div class="mt-20">
-                    @if (!_isLoading && _foundMixers.IsNullOrEmpty())
-                    {
-                        <p>No mixers found. Please make sure you are conencted with the same Wi-Fi network as the mixer.</p>
-                    }
-                    
-                    @foreach (var mixer in _foundMixers)
-                    {
-                        <MixerCard Mixer="mixer"/>
-                    }
-                </div>
-            }
-        </article>
-        <button @onclick="ScanMixers" class="mt-auto btn" disabled="@_isLoading">
-            Search for mixers
-            @if (_isLoading)
-            {
-                <i class="far fa-spinner animate-spin"></i>
-            }
-        </button>
+            <h1 class="text-white text-6xl font-bold font-fredoka text-center mb-6">EggBox</h1>
+            @if (_state == ConnectState.Idle)
+           {
+               <p>Idle</p>
+           }
+           @if (_state == ConnectState.Connecting)
+           {
+               <p>Connecting...</p>
+           }
+           else if (_state == ConnectState.Connected)
+           {
+               <p>Connected to mixer!</p>
+           }
+           else if (_state == ConnectState.ScanRequired)
+           {
+               <p>Scanning...</p>
+           }
+           else if (_state == ConnectState.NoMixerFound)
+           {
+               <p>No mixers found. Make sure you're on the same Wi-Fi network.</p>
+           } 
+           else if (_state == ConnectState.MixersFound)
+           {
+               <div>
+                   <p>Found mixers:</p>
+                   @foreach (var mixer in _foundMixers)
+                   {
+                       <MixerCard Mixer="mixer"/>
+                   }
+               </div>
+           }
+           </article>
     </div>
 </section>
 
 @code {
+    private ConnectState _state = ConnectState.Idle;
     private List<MixerInfo> _foundMixers = new();
-    private Option<MixerInfo> _lastMixer;
-    private bool _isLoading = false;
-    private bool _hasScanned = false;
 
-    private Task ForgetLastMixer(MixerInfo _)
-    {
-        Storage.Remove(StorageKeys.LastMixer);
-        _lastMixer = Option.None<MixerInfo>();
-        return Task.CompletedTask;
-    }
     
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _lastMixer = LoadLastMixer();
+        Connector.OnConnectionStateChanged += state =>
+        {
+            _ = OnConnectionStateChangedAsync(state);
+        };
+        await Connector.TryAutoReconnectAsync();
     }
 
-    private Option<MixerInfo> LoadLastMixer()
+    private async Task OnConnectionStateChangedAsync(ConnectState state)
     {
-        return Storage.Get(StorageKeys.LastMixer);
+        _state = state;
+        if (state == ConnectState.ScanRequired)
+        {
+            await ScanMixers();
+        }
+        else if (state == ConnectState.Connected)
+        {
+            NavManager.NavigateTo(Routes.Band);
+        }
+        InvokeAsync(StateHasChanged);
     }
-    
 
     private async Task ScanMixers()
     {
-        _hasScanned = true;
-        _isLoading = true;
-        _foundMixers.Clear();
+        _state = ConnectState.Connecting;
         StateHasChanged();
 
         _foundMixers = await Connector.ScanViaBroadcast();
 
-        _isLoading = false;
+        _state = _foundMixers.Any() ? ConnectState.MixersFound : ConnectState.NoMixerFound;
         StateHasChanged();
     }
 

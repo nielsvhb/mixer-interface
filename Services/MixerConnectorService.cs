@@ -6,6 +6,7 @@ using System.Text;
 using Eggbox.Models;
 using Microsoft.Extensions.Logging;
 using Optional;
+using Optional.Async.Extensions;
 using OscCore;
 #if ANDROID
 using Android.Net.Wifi;
@@ -24,7 +25,11 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
     private readonly Dictionary<int, MixerColor> _busColors = new();
     public IReadOnlyDictionary<int, string> BusNames => _busNames;
     public IReadOnlyDictionary<int, MixerColor> BusColors => _busColors;
-    
+    private TaskCompletionSource<bool>? _pingTcs;
+    public event Action<ConnectState>? OnConnectionStateChanged;
+    public event Action<int, string, MixerColor>? OnBusUpdated;
+
+
 #if ANDROID
     private WifiManager.MulticastLock? _multicastLock;
 
@@ -47,28 +52,60 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         }
     }
 #endif
-    public event Action<int, string, MixerColor>? OnBusUpdated;
 
-    private void UpdateBus(int index, string? name = null, MixerColor? color = null)
+    public async Task TryAutoReconnectAsync()
     {
-        bool changed = false;
-
-        if (name != null && (!_busNames.ContainsKey(index) || _busNames[index] != name))
+        var lastMixer = Storage.Get<MixerInfo?>(StorageKeys.LastMixer);
+        await lastMixer.MatchSomeAsync(async lm =>
         {
-            _busNames[index] = name;
-            changed = true;
-        }
-
-        if (color != null && (!_busColors.ContainsKey(index) || _busColors[index] != color))
-        {
-            _busColors[index] = color;
-            changed = true;
-        }
-
-        if (changed)
-            OnBusUpdated?.Invoke(index, _busNames.GetValueOrDefault(index, ""), _busColors.GetValueOrDefault(index, MixerColor.Red));
+            OnConnectionStateChanged?.Invoke(ConnectState.Connecting);
+            
+            Connect(lm);
+            var success = await PingMixerAsync(lm.IpAddress); // stuur /xinfo en wacht max 500ms
+            if (success)
+            {
+                OnConnectionStateChanged?.Invoke(ConnectState.Connected);
+            }
+            
+        });
+      
+        OnConnectionStateChanged?.Invoke(ConnectState.ScanRequired);
     }
-    
+    private async Task<bool> PingMixerAsync(string ip, int timeoutMs = 500)
+    {
+        if (_client == null)
+            return false;
+
+        _pingTcs = new TaskCompletionSource<bool>();
+
+        void Handler(object? sender, OscPacket packet)
+        {
+            if (packet is OscMessage msg && msg.Address == "/xinfo")
+            {
+                _pingTcs?.TrySetResult(true);
+            }
+        }
+
+        _client.PacketReceived += Handler;
+
+        try
+        {
+            await _client.SendAsync(new OscMessage("/xinfo"));
+
+            // wacht op respons of timeout
+            var task = await Task.WhenAny(_pingTcs.Task, Task.Delay(timeoutMs));
+            return task == _pingTcs.Task && _pingTcs.Task.Result;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            _client.PacketReceived -= Handler;
+            _pingTcs = null;
+        }
+    }
     public void InitializeBusState(int maxBus = 6)
     {
         if (_client == null) return;
@@ -148,7 +185,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         var ip = mixer.IpAddress;
         Storage.Set(StorageKeys.LastMixer, mixer);
         Disconnect(); // als er al een verbinding is
-        _client = new UdpOscClient(ip, Port, logger);
+        _client = new UdpOscClient(ip.ToString(), Port, logger);
         
         _client.PacketReceived += (sender, packet) =>
         {
@@ -160,6 +197,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
                     string name = msg[0]?.ToString() ?? string.Empty;
                     _busNames[busIndex] = name;
                     OnBusUpdated?.Invoke(busIndex, name, _busColors.GetValueOrDefault(busIndex, MixerColor.Red));
+                    logger.LogInformation("Bus naam geüpdatet {busIndex}: {name}", busIndex, name);
                 }
                 else if (msg.Address.EndsWith("/config/color"))
                 {
@@ -171,6 +209,8 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
             }
         };
         ConnectedMixerIp = ip.SomeNotNull();
+        InitializeBusState(6);
+
     }
     private static int ExtractBusIndex(string address)
     {

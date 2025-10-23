@@ -1,4 +1,6 @@
-﻿namespace Eggbox.Models;
+﻿using System.Net;
+
+namespace Eggbox.Models;
 
 public record MixerInfo(string IpAddress, string RawResponse)
 {
