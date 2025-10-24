@@ -55,7 +55,6 @@
             .ToList();
 
         Connector.OnBusUpdated += HandleBusUpdate;
-        Connector.InitializeBusState(6); // vraagt direct de actuele state van de mixer op
     }
     
     private void HandleBusUpdate(int index, string name, MixerColor color)
@@ -70,11 +69,13 @@
     }
     private bool _showError = false;
     
-    private void SaveAll()
+    private async Task SaveAll()
     {
         if (!_buses.Any(b => !b.Name.IsNullOrEmpty()))
         {
             _showError = true;
+            await InvokeAsync(StateHasChanged);
+
             return;
         }
 
@@ -86,7 +87,7 @@
             Connector.SetBusColor(bus.Index, bus.Color);
         }
 
-        // optioneel feedback, navigatie, etc.
+        NavManager.NavigateTo(Routes.Dashboard);
     }
 
     public void Dispose()

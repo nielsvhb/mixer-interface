@@ -72,7 +72,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
 
             OnConnectionStateChanged?.Invoke(ConnectState.Connecting);
 
-            Connect(lm);
+            await Connect(lm);
 
             var success = await PingMixerAsync(lm.IpAddress);
             if (success)
@@ -126,14 +126,14 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
             _pingTcs = null;
         }
     }
-    public void InitializeBusState(int maxBus = 6)
+    public async Task InitializeBusState(int maxBus = 6)
     {
         if (_client == null) return;
 
         for (int bus = 1; bus <= maxBus; bus++)
         {
-            _client.SendAsync(new OscMessage($"/bus/{bus}/config/name"));
-            _client.SendAsync(new OscMessage($"/bus/{bus}/config/color"));
+            await _client.SendAsync(new OscMessage($"/bus/{bus}/config/name"));
+            await _client.SendAsync(new OscMessage($"/bus/{bus}/config/color"));
         }
 
         // de PacketReceived handler van _client verwerkt de antwoorden en vult _busNames/_busColors
@@ -236,11 +236,9 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
 #endif
         return ConnectState.Connected; // subnet klopt
     }
-    public void Connect(MixerInfo mixer)
+    public async Task Connect(MixerInfo mixer)
     {
         var ip = mixer.IpAddress;
-        
-        // check Wi-Fi subnet
         var state = CheckWifiMismatch(ip);
         if (state == ConnectState.WifiMismatch)
         {
@@ -254,37 +252,35 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         
         _client.PacketReceived += (sender, packet) =>
         {
-            if (packet is OscMessage msg)
+            if (packet is not OscMessage msg) return;
+            if (msg.Address.EndsWith("/config/name"))
             {
-                if (msg.Address.EndsWith("/config/name"))
-                {
-                    int busIndex = ExtractBusIndex(msg.Address);
-                    string name = msg[0]?.ToString() ?? string.Empty;
-                    _busNames[busIndex] = name;
-                    OnBusUpdated?.Invoke(busIndex, name, _busColors.GetValueOrDefault(busIndex, MixerColor.Red));
-                    OnBusStateReceived?.Invoke();
+                var busIndex = ExtractBusIndex(msg.Address);
+                var name = msg[0]?.ToString() ?? string.Empty;
+                _busNames[busIndex] = name;
+                OnBusUpdated?.Invoke(busIndex, name, _busColors.GetValueOrDefault(busIndex, MixerColor.Red));
+                OnBusStateReceived?.Invoke();
 
-                    logger.LogInformation("Bus naam geüpdatet {busIndex}: {name}", busIndex, name);
-                }
-                else if (msg.Address.EndsWith("/config/color"))
-                {
-                    int busIndex = ExtractBusIndex(msg.Address);
-                    MixerColor color = MixerColor.FromMappedValue(Convert.ToInt32(msg[0])).ValueOr(MixerColor.Red);
-                    _busColors[busIndex] = color;
-                    OnBusUpdated?.Invoke(busIndex, _busNames.GetValueOrDefault(busIndex, ""), color);
-                }
+                logger.LogInformation("Bus naam geüpdatet {busIndex}: {name}", busIndex, name);
+            }
+            else if (msg.Address.EndsWith("/config/color"))
+            {
+                var busIndex = ExtractBusIndex(msg.Address);
+                var color = MixerColor.FromMappedValue(Convert.ToInt32(msg[0])).ValueOr(MixerColor.Red);
+                _busColors[busIndex] = color;
+                OnBusUpdated?.Invoke(busIndex, _busNames.GetValueOrDefault(busIndex, ""), color);
             }
         };
         ConnectedMixerIp = ip.SomeNotNull();
-        InitializeBusState(6);
-
+        await InitializeBusState(6);
     }
     private static int ExtractBusIndex(string address)
     {
         var parts = address.Split('/');
         return int.Parse(parts[2]); // /bus/{index}/config/...
     }
-    public void Disconnect()
+
+    private void Disconnect()
     {
         _client?.Dispose();
         _client = null;

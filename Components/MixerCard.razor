@@ -29,18 +29,14 @@
         if (isAnimating) 
             return;
 
-        // Zet animatieflag aan
         isAnimating = true;
         StateHasChanged();
 
-        // Wacht tot animatie (duration-200) is afgerond
         await Task.Delay(200);
 
-        // Doe de connectie en navigatie
-        Connector.Connect(Mixer);
+        await Connector.Connect(Mixer);
         NavManager.NavigateTo(Routes.Band);
 
-        // (optioneel) reset animatieflag voor wanneer je ooit terugkomt
         isAnimating = false;
     }
 }

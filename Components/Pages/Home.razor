@@ -48,13 +48,13 @@
 @code {
     private ConnectState _state = ConnectState.Idle;
     private List<MixerInfo> _foundMixers = new();
-
     
     protected override async Task OnInitializedAsync()
     {
-        Connector.OnConnectionStateChanged += state =>
+        Connector.OnConnectionStateChanged += async state =>
         {
-            _ = OnConnectionStateChangedAsync(state);
+            try { await OnConnectionStateChangedAsync(state); }
+            catch (Exception ex) { Logger.LogError(ex, "Fout bij statechange"); }
         };
         await Connector.TryAutoReconnectAsync();
     }
@@ -62,14 +62,15 @@
     private async Task OnConnectionStateChangedAsync(ConnectState state)
     {
         _state = state;
-        if (state == ConnectState.ScanRequired)
+        switch (state)
         {
-            await ScanMixers();
-        }
-        else if (state == ConnectState.Connected)
-        {
-            Connector.OnBusStateReceived += HandleBusStateReceived;
-            Connector.InitializeBusState(6);
+            case ConnectState.ScanRequired:
+                await ScanMixers();
+                break;
+            case ConnectState.Connected:
+                Connector.OnBusStateReceived += HandleBusStateReceived;
+                await Connector.InitializeBusState(6);
+                break;
         }
         await InvokeAsync(StateHasChanged);
     }
@@ -90,17 +91,13 @@
     private void HandleBusStateReceived()
     {
         Connector.OnBusStateReceived -= HandleBusStateReceived;
+        var hasNames = Connector.BusNames.Values.Any(name => !string.IsNullOrWhiteSpace(name));
 
-        // Check of er ooit channel names zijn ingevuld
-        bool hasNames = Connector.BusNames.Values.Any(name => !string.IsNullOrWhiteSpace(name));
-
-        if (hasNames)
-        {
-            NavManager.NavigateTo(Routes.Dashboard);
-        }
-        else
-        {
-            NavManager.NavigateTo(Routes.Band); // setup page
-        }
+        NavManager.NavigateTo(hasNames ? Routes.Dashboard : Routes.Band);
+    }
+    
+    public void Dispose()
+    {
+        Connector.OnBusStateReceived -= HandleBusStateReceived;
     }
 }

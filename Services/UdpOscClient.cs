@@ -21,16 +21,14 @@ public sealed class UdpOscClient : IDisposable
     {
         _logger = logger;
 
-        // binden op een lokale poort zodat de mixer ons kan bereiken
         LocalPort = localPort ?? GetFreePort();
         client = new UdpClient(LocalPort);
         _remoteEndPoint = new IPEndPoint(IPAddress.Parse(hostName), port);
         _logger.LogInformation("UDP client bound to local endpoint {EP}", client.Client.LocalEndPoint);
 
         cts = new CancellationTokenSource();
-        StartReceiving();
+        StartReceivingAsync();
 
-        // subscription direct sturen en daarna elke 30s herhalen
         _ = SendAsync(new OscMessage("/xremote"));
         _subscriptionTimer = new Timer(_ => 
         {
@@ -45,7 +43,7 @@ public sealed class UdpOscClient : IDisposable
         await client.SendAsync(data, data.Length, _remoteEndPoint).ConfigureAwait(false);
     }
 
-    private async void StartReceiving()
+    private Task StartReceivingAsync() => Task.Run(async () =>
     {
         _logger.LogInformation("📡 Start receiving on local port {Port}", LocalPort);
         try
@@ -61,6 +59,7 @@ public sealed class UdpOscClient : IDisposable
                     foreach (var arg in msg)
                         _logger.LogInformation("Argument: {Arg}", arg);
                 }
+
                 PacketReceived?.Invoke(this, packet);
             }
         }
@@ -72,7 +71,7 @@ public sealed class UdpOscClient : IDisposable
         {
             _logger.LogError(ex, "Fout tijdens ontvangen van OSC");
         }
-    }
+    });
 
     public void Dispose()
     {
