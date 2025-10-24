@@ -96,7 +96,8 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         if (_client == null)
             return false;
 
-        _pingTcs = new TaskCompletionSource<bool>();
+        _pingTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
 
         void Handler(object? sender, OscPacket packet)
         {
@@ -110,7 +111,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
 
         try
         {
-            await _client.SendAsync(new OscMessage("/xinfo"));
+            await _client.SendAsync(new OscMessage("/xinfo")).ConfigureAwait(false);
 
             // wacht op respons of timeout
             var task = await Task.WhenAny(_pingTcs.Task, Task.Delay(timeoutMs));
@@ -132,8 +133,8 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
 
         for (int bus = 1; bus <= maxBus; bus++)
         {
-            await _client.SendAsync(new OscMessage($"/bus/{bus}/config/name"));
-            await _client.SendAsync(new OscMessage($"/bus/{bus}/config/color"));
+            await _client.SendAsync(new OscMessage($"/bus/{bus}/config/name")).ConfigureAwait(false);
+            await _client.SendAsync(new OscMessage($"/bus/{bus}/config/color")).ConfigureAwait(false);
         }
 
         // de PacketReceived handler van _client verwerkt de antwoorden en vult _busNames/_busColors
