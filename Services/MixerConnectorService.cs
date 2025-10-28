@@ -29,7 +29,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
     public event Action<ConnectState>? OnConnectionStateChanged;
     public event Action<int, string, MixerColor>? OnBusUpdated;
     public event Action? OnBusStateReceived;
-
+    public event Action<string, bool>? OnOscLog;
 
 #if ANDROID
     private WifiManager.MulticastLock? _multicastLock;
@@ -53,6 +53,22 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         }
     }
 #endif
+    
+    private void AttachClientEventHandlers()
+    {
+        if (_client == null) return;
+
+        _client.PacketReceived += (_, packet) =>
+        {
+            if (packet is OscMessage msg)
+                OnOscLog?.Invoke($"⬅️ {msg.Address} {string.Join(' ', msg.Select(a => a.ToString()))}", false);
+        };
+
+        _client.PacketSent += (_, msg) =>
+        {
+            OnOscLog?.Invoke($"➡️ {msg.Address} {string.Join(' ', msg.Select(a => a.ToString()))}", true);
+        };
+    }
 
     public async Task TryAutoReconnectAsync()
     {
@@ -237,6 +253,12 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
 #endif
         return ConnectState.Connected; // subnet klopt
     }
+    
+    public async Task SendCustomAsync(OscMessage msg)
+    {
+        await _client?.SendAsync(msg);
+    }
+    
     public async Task Connect(MixerInfo mixer)
     {
         var ip = mixer.IpAddress;
@@ -250,6 +272,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         Storage.Set(StorageKeys.LastMixer, mixer);
         Disconnect(); // als er al een verbinding is
         _client = new UdpOscClient(ip.ToString(), Port, logger);
+        AttachClientEventHandlers();
         
         _client.PacketReceived += (sender, packet) =>
         {

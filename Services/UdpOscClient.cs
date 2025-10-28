@@ -14,6 +14,7 @@ public sealed class UdpOscClient : IDisposable
     private readonly IPEndPoint _remoteEndPoint;
 
     public event EventHandler<OscPacket>? PacketReceived;
+    public event EventHandler<OscMessage>? PacketSent;
 
     public int LocalPort { get; }
 
@@ -39,8 +40,11 @@ public sealed class UdpOscClient : IDisposable
     public async Task SendAsync(OscPacket packet)
     {
         var data = packet.ToByteArray();
-        _logger.LogInformation("➡️ Sending OSC: {Address}", (packet as OscMessage)?.Address ?? packet.ToString());
+        var msg = packet as OscMessage;
+        _logger.LogInformation("➡️ Sending OSC: {Address}", msg?.Address ?? packet.ToString());
         await client.SendAsync(data, data.Length, _remoteEndPoint).ConfigureAwait(false);
+        if (msg != null)
+            PacketSent?.Invoke(this, msg);
     }
 
     private Task StartReceivingAsync() => Task.Run(async () =>

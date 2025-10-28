@@ -1,0 +1,44 @@
+﻿@attribute [Route(Routes.OscMonitor)]
+@using Eggbox.Services
+@inject MixerConnectorService Connector
+
+<h3>OSC Monitor</h3>
+
+<div class="mb-3">
+    <input @bind="command" placeholder="/ch/01/mix/fader 0.75" />
+    <button @onclick="SendCommand">Send</button>
+</div>
+
+<div style="max-height:400px; overflow-y:auto; font-family:monospace;">
+    @foreach (var line in logs)
+    {
+        <div>@line</div>
+    }
+</div>
+
+@code {
+    private List<string> logs = new();
+    private string command = "";
+
+    protected override void OnInitialized()
+    {
+        Connector.OnOscLog += (msg, isTx) =>
+        {
+            InvokeAsync(() =>
+            {
+                logs.Insert(0, $"{DateTime.Now:HH:mm:ss.fff} {(isTx ? "TX" : "RX")} {msg}");
+                if (logs.Count > 300) logs.RemoveAt(logs.Count - 1);
+                StateHasChanged();
+            });
+        };
+    }
+
+    private async Task SendCommand()
+    {
+        if (string.IsNullOrWhiteSpace(command)) return;
+        var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var msg = new OscCore.OscMessage(parts[0], parts.Skip(1).ToArray());
+        await Connector.SendCustomAsync(msg); 
+        command = "";
+    }
+}

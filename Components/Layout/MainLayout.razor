@@ -1,7 +1,14 @@
 ﻿@inherits LayoutComponentBase
 
-<div>
-    @Body
+<div class="h-screen container flex flex-col py-5">
+    <header>
+        <NavLink href="@Routes.OscMonitor" class="btn btn-primary">
+            Naar OSC Monitor
+        </NavLink>
+    </header>
+    <main class="grow">
+        @Body
+    </main>
 </div>
 
 @code {
