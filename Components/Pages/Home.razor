@@ -12,7 +12,10 @@
             <h1 class="text-white text-6xl font-bold font-fredoka text-center mb-6">EggBox</h1>
             @if (_state == ConnectState.Connecting)
            {
-               <p>Connecting...</p>
+               <div class="text-center">
+                   <p class="mb-4">Scanning...</p>
+                   <i class="fas fa-spinner animate-spin text-white"></i>
+               </div>
            }
            else if (_state == ConnectState.Connected)
            {
@@ -24,12 +27,12 @@
            }
            else if (_state == ConnectState.NoMixerFound)
            {
-               <p>No mixers found. Make sure you're on the same Wi-Fi network.</p>
+               <p>No mixers found. Make sure you're on the same Wi-Fi network and the mixer is turned on.</p>
+               <button @onclick="ScanMixers" class="btn w-full mt-6">Try again</button>
            } 
            else if (_state == ConnectState.MixersFound)
            {
                <div>
-                   <p>Found mixers:</p>
                    @foreach (var mixer in _foundMixers)
                    {
                        <MixerCard Mixer="mixer"/>
@@ -40,6 +43,7 @@
                <p class="text-red-400">
                    Your device is not on the same Wi-Fi network as the mixer. Please connect to the correct network.
                </p>
+               <button @onclick="ScanMixers" class="btn w-full mt-6">Try again</button>
            }
            </article>
     </div>
@@ -77,9 +81,6 @@
 
     private async Task ScanMixers()
     {
-        if (_state == ConnectState.WifiMismatch)
-            return;
-        
         _state = ConnectState.Connecting;
         StateHasChanged();
 
@@ -88,12 +89,13 @@
         _state = _foundMixers.Any() ? ConnectState.MixersFound : ConnectState.NoMixerFound;
         StateHasChanged();
     }
-    private void HandleBusStateReceived()
+    private async void HandleBusStateReceived()
     {
         Connector.OnBusStateReceived -= HandleBusStateReceived;
-        var hasNames = Connector.BusNames.Values.Any(name => !string.IsNullOrWhiteSpace(name));
-
-        NavManager.NavigateTo(hasNames ? Routes.Dashboard : Routes.Band);
+        if (await Connector.IsSetupCompletedAsync())
+            NavManager.NavigateTo(Routes.Dashboard);
+        else
+            NavManager.NavigateTo(Routes.Band);
     }
     
     public void Dispose()

@@ -60,7 +60,15 @@ public sealed class UdpOscClient : IDisposable
                         _logger.LogInformation("Argument: {Arg}", arg);
                 }
 
-                PacketReceived?.Invoke(this, packet);
+                try
+                {
+                    PacketReceived?.Invoke(this, packet);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "❌ Error during PacketReceived for address {Addr}", 
+                        (packet as OscMessage)?.Address);
+                }
             }
         }
         catch (OperationCanceledException)

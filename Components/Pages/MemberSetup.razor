@@ -1,0 +1,176 @@
+﻿@attribute [Route(Routes.MemberSetup)]
+@inject MixerConnectorService Connector
+@inject NavigationManager NavManager
+@using Eggbox.Models
+@using Eggbox.Services
+@inject BandStateService BandState
+
+<section class="h-screen container flex flex-col py-5">
+    <div class="mt-6 flex justify-between items-center">
+        <button @onclick="BackToBand" class="text-sm text-blue-500 underline">← Back to Band</button>
+        <h1 class="text-xl text-gray-700 font-fredoka">Setup: @_member?.Name</h1>
+        <span></span>
+    </div>
+
+    @if (_member is null)
+    {
+        <p class="text-center mt-10 text-gray-500">Loading member...</p>
+    }
+    else
+    {
+        <div class="mt-5 space-y-5 overflow-y-auto">
+            <!-- Naam -->
+            <div>
+                <label class="text-sm text-gray-600">Name</label>
+                <input class="w-full border-b border-gray-300 bg-transparent py-1 focus:outline-none"
+                       @bind="_member.Name" />
+            </div>
+
+            <!-- Kleur -->
+            <div>
+                <label class="text-sm text-gray-600">Color</label>
+                <select class="border border-gray-300 rounded-md py-1 px-2 bg-gray-100"
+                        @bind="SelectedColor">
+                    @foreach (var color in MixerColor.Enumerators)   @* of .All *@
+                    {
+                        <option value="@color.MappedValue">@color.ToString()</option>
+                    }
+                </select>
+            </div>
+
+            <!-- Instrumentenlijst -->
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-sm text-gray-600">Instruments</label>
+                    <button class="btn btn-secondary btn-xs" @onclick="AddInstrument">+ Add</button>
+                </div>
+
+                @foreach (var instr in _member.Instruments)
+                {
+                    <div class="p-3 mb-2 rounded-md border border-gray-200 bg-white/70">
+                        <div class="flex justify-between items-center mb-2">
+                            <input class="border-b border-gray-300 focus:outline-none flex-1"
+                                   placeholder="Instrument name"
+                                   @bind="instr.Name" />
+
+                            <button class="text-xs text-blue-500 underline ml-2"
+                                    @onclick="() => OpenGainModal(instr)">
+                                Set Gain
+                            </button>
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-gray-600">Input Channel</label>
+                            <select class="w-full border border-gray-300 rounded-md py-1 px-2 bg-gray-100"
+                                    @bind="instr.ChannelIndex">
+                                @foreach (var input in _inputs)
+                                {
+                                    <option value="@input.ChannelIndex">@input.ChannelIndex</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="flex justify-between mt-auto pt-5">
+            <button @onclick="PreviousMember" class="btn btn-secondary">Previous</button>
+
+            @if (IsLastMember)
+            {
+                <button @onclick="FinishSetup" class="btn btn-primary" disabled="@(!IsReady)">Go to Dashboard</button>
+            }
+            else
+            {
+                <button @onclick="NextMember" class="btn btn-primary" disabled="@(!IsReady)">Next</button>
+            }
+        </div>
+    }
+
+    @if (_showGainModal && _activeInstrument is not null)
+    {
+        <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-lg p-5 w-80">
+                <h2 class="text-lg font-semibold mb-3">Set Gain - @_activeInstrument.Name</h2>
+                <input type="range" min="0" max="1" step="0.01"
+                       @bind="_activeInstrument.Gain" class="w-full" />
+                <p class="text-center mt-2 text-sm text-gray-600">
+                    @_activeInstrument.Gain.ToString("0.00")
+                </p>
+                <div class="flex justify-end mt-4">
+                    <button class="btn btn-secondary mr-2" @onclick="CloseGainModal">Cancel</button>
+                    <button class="btn btn-primary" @onclick="CloseGainModal">OK</button>
+                </div>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private List<InstrumentSetup> _inputs = new();
+    private BandMemberSetup? _member;
+    private bool _showGainModal;
+    private InstrumentSetup? _activeInstrument;
+
+    private bool IsReady => _member != null && _member.Instruments.All(i => i.Gain > 0);
+    private bool IsLastMember => Id >= BandState.Members.Count;
+    
+    private int SelectedColor
+    {
+        get => _member.Color.MappedValue;
+        set => _member.Color = MixerColor
+            .FromMappedValue(value)
+            .ValueOr(_member.Color);
+    }
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        _member = BandState.GetMemberById(Id);
+        if (_inputs.Count == 0)
+            _inputs = await Connector.LoadInputChannelsAsync();
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void AddInstrument()
+    {
+        _member!.Instruments.Add(new InstrumentSetup(1, "Guitar", 0));
+    }
+
+    private void OpenGainModal(InstrumentSetup instr)
+    {
+        _activeInstrument = instr;
+        _showGainModal = true;
+    }
+
+    private void CloseGainModal()
+    {
+        _activeInstrument = null;
+        _showGainModal = false;
+    }
+
+    private void NextMember()
+    {
+        if (Id < BandState.Members.Count)
+            NavManager.NavigateTo($"/member-setup/{Id + 1}");
+    }
+
+    private void PreviousMember()
+    {
+        if (Id > 1)
+            NavManager.NavigateTo($"/member-setup/{Id - 1}");
+        else
+            NavManager.NavigateTo(Routes.Band);
+    }
+
+    private async Task FinishSetup()
+    {
+        await Connector.SaveBandSetupAsync(BandState.Members);
+        NavManager.NavigateTo(Routes.Dashboard);
+    }
+
+    private void BackToBand() => NavManager.NavigateTo(Routes.Band);
+}

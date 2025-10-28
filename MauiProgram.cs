@@ -21,8 +21,13 @@ public static class MauiProgram
         builder.Services.AddTailwindProviders();
         builder.Services.AddFontAwesomeIcons();
         builder.Services.AddSingleton<MixerConnectorService>();
+        builder.Services.AddSingleton<BandStateService>();
 
-
+        AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
+        {
+            var ex = e.ExceptionObject as Exception;
+            System.Diagnostics.Debug.WriteLine($"🔥 Unhandled Exception: {ex}");
+        };
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();
         builder.Logging.AddDebug();

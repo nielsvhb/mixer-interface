@@ -257,6 +257,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
             if (msg.Address.EndsWith("/config/name"))
             {
                 var busIndex = ExtractBusIndex(msg.Address);
+                if (busIndex <= 0) return; 
                 var name = msg[0]?.ToString() ?? string.Empty;
                 _busNames[busIndex] = name;
                 OnBusUpdated?.Invoke(busIndex, name, _busColors.GetValueOrDefault(busIndex, MixerColor.Red));
@@ -267,6 +268,7 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
             else if (msg.Address.EndsWith("/config/color"))
             {
                 var busIndex = ExtractBusIndex(msg.Address);
+                if (busIndex <= 0) return; 
                 var color = MixerColor.FromMappedValue(Convert.ToInt32(msg[0])).ValueOr(MixerColor.Red);
                 _busColors[busIndex] = color;
                 OnBusUpdated?.Invoke(busIndex, _busNames.GetValueOrDefault(busIndex, ""), color);
@@ -277,8 +279,19 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
     }
     private static int ExtractBusIndex(string address)
     {
-        var parts = address.Split('/');
-        return int.Parse(parts[2]); // /bus/{index}/config/...
+        try
+        {
+            var parts = address.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            if (parts.Length < 3 || parts[0] != "bus")
+                return -1;
+
+            return int.TryParse(parts[1], out var index) ? index : -1;
+        }
+        catch
+        {
+            return -1;
+        }
     }
 
     private void Disconnect()
@@ -287,19 +300,112 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         _client = null;
         ConnectedMixerIp = Option.None<string>();
     }
-
-    public void SetBusName(int busIndex, string name)
-    {
-         _client?.SendAsync(new OscMessage($"/bus/{busIndex}/config/name", name));
-    }
-
-    public void SetBusColor(int busIndex, MixerColor color)
-    {
-        _client?.SendAsync(new OscMessage($"/bus/{busIndex}/config/color", color.MappedValue));
-    }
     
-
     private static bool IsMixerResponse(string response)
         => response.ToLowerInvariant().Contains("xinfo");
     
+    public async Task<List<InstrumentSetup>> LoadInputChannelsAsync()
+    {
+        try
+        {
+            var instruments = new Dictionary<int, InstrumentSetup>();
+
+            void Handler(object? sender, OscPacket packet)
+            {
+                if (packet is not OscMessage msg) return;
+                int index = ExtractChannelIndex(msg.Address);
+                if (index <= 0) return;
+
+                if (!instruments.TryGetValue(index, out var instrument))
+                {
+                    instrument = new InstrumentSetup(index, "", 0);
+                    instruments[index] = instrument;
+                }
+
+                if (msg.Address.EndsWith("/config/name"))
+                    instrument.Name = msg[0]?.ToString() ?? $"CH{index}";
+                else if (msg.Address.EndsWith("/mix/fader"))
+                    instrument.Gain = Convert.ToDouble(msg[0]);
+            }
+
+            _client!.PacketReceived += Handler;
+
+            for (int ch = 1; ch <= 16; ch++)
+            {
+                await _client.SendAsync(new OscMessage($"/ch/{ch}/config/name"));
+                await _client.SendAsync(new OscMessage($"/ch/{ch}/mix/fader"));
+            }
+
+            await Task.Delay(500);
+
+            _client.PacketReceived -= Handler;
+
+            return instruments.Values.OrderBy(i => i.ChannelIndex).ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "❌ Unhandled error in LoadInputChannelsAsync");
+            return new List<InstrumentSetup>();
+        }
+    }
+
+
+    private static int ExtractChannelIndex(string address)
+    {
+        try
+        {
+            var parts = address.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            // verwacht minimaal: "ch", "{index}", "config" of "mix"
+            if (parts.Length < 2 || parts[0] != "ch")
+                return -1;
+
+            return int.TryParse(parts[1], out var index) ? index : -1;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+    
+    public async Task SaveBandSetupAsync(List<BandMemberSetup> members)
+    {
+        if (_client == null)
+            throw new InvalidOperationException("Mixer not connected.");
+
+        foreach (var member in members)
+        {
+            logger.LogInformation("💾 Saving setup for bus {BusIndex}: {Name}", member.BusIndex, member.Name);
+
+            await _client.SendAsync(new OscMessage($"/bus/{member.BusIndex}/config/name", member.Name));
+            await _client.SendAsync(new OscMessage($"/bus/{member.BusIndex}/config/color", member.Color.MappedValue));
+
+            foreach (var instrument in member.Instruments)
+            {
+                var levelAddress = $"/ch/{instrument.ChannelIndex}/mix/{member.BusIndex}/level";
+                await _client.SendAsync(new OscMessage(levelAddress, instrument.Gain));
+                logger.LogDebug("  🎚️ {Instr} -> Bus {BusIndex} Gain={Gain}", instrument.Name, member.BusIndex, instrument.Gain);
+            }
+        }
+
+        // Markeer setup als voltooid op mixer zelf (bijv. in LR-naam)
+        await _client.SendAsync(new OscMessage("/lr/config/name", "EggBoxSetup:1"));
+    }
+    
+    public async Task<bool> IsSetupCompletedAsync()
+    {
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Handler(object? s, OscPacket p)
+        {
+            if (p is OscMessage msg && msg.Address == "/lr/config/name")
+                tcs.TrySetResult(msg[0]?.ToString() ?? "");
+        }
+
+        _client!.PacketReceived += Handler;
+        await _client.SendAsync(new OscMessage("/lr/config/name"));
+        var response = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        _client.PacketReceived -= Handler;
+
+        return false;  // response.Contains("EggBoxSetup:1");
+    }
 }
