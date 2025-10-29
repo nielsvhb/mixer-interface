@@ -1,64 +1,64 @@
 ﻿@attribute [Route(Routes.Home)]
 @using Eggbox.Services
 @using Eggbox.Models
-@using Optional
 @using Microsoft.Extensions.Logging
 @inject MixerConnectorService Connector
+@inject MixerCommandService Mixer
+@inject MixerStateCacheService Cache
 @inject ILogger<UdpOscClient> Logger
+@inject NavigationManager NavManager
 
 <section class="h-full bg-gradient-to-b from-primary to-primary-dark text-gray-200">
     <div class="container flex flex-col h-full py-5 bg-[radial-gradient(#e5e7eb20_2px,transparent_2px)] [background-size:16px_16px]">
         <article class="mt-32">
             <h1 class="text-white text-6xl font-bold font-fredoka text-center mb-6">EggBox</h1>
+
             @if (_state == ConnectState.Connecting)
-           {
-               <div class="text-center">
-                   <p class="mb-4">Scanning...</p>
-                   <i class="fas fa-spinner animate-spin text-white"></i>
-               </div>
-           }
-           else if (_state == ConnectState.Connected)
-           {
-               <p>Connected to mixer!</p>
-           }
-           else if (_state == ConnectState.ScanRequired)
-           {
-               <p>Scanning...</p>
-           }
-           else if (_state == ConnectState.NoMixerFound)
-           {
-               <p>No mixers found. Make sure you're on the same Wi-Fi network and the mixer is turned on.</p>
-               <button @onclick="ScanMixers" class="btn w-full mt-6">Try again</button>
-           } 
-           else if (_state == ConnectState.MixersFound)
-           {
-               <div>
-                   @foreach (var mixer in _foundMixers)
-                   {
-                       <MixerCard Mixer="mixer"/>
-                   }
-               </div>
-           } else if (_state == ConnectState.WifiMismatch)
-           {
-               <p class="text-red-400">
-                   Your device is not on the same Wi-Fi network as the mixer. Please connect to the correct network.
-               </p>
-               <button @onclick="ScanMixers" class="btn w-full mt-6">Try again</button>
-           }
-           </article>
+            {
+                <div class="text-center">
+                    <p class="mb-4">Connecting...</p>
+                    <i class="fas fa-spinner animate-spin text-white text-3xl"></i>
+                </div>
+            }
+            else if (_state == ConnectState.Connected)
+            {
+                <p class="text-center">Connected to mixer!</p>
+            }
+            else if (_state == ConnectState.NoMixerFound)
+            {
+                <p class="text-center">No mixers found. Make sure you're on the same Wi-Fi network and the mixer is turned on.</p>
+                <button @onclick="ScanMixers" class="btn w-full mt-6">Try again</button>
+            }
+            else if (_state == ConnectState.MixersFound)
+            {
+                <div>
+                    @foreach (var mixer in _foundMixers)
+                    {
+                        <MixerCard MixerInfo="mixer" />
+                    }
+                </div>
+            }
+            else if (_state == ConnectState.WifiMismatch)
+            {
+                <p class="text-center text-red-400">
+                    Your device is not on the same Wi-Fi network as the mixer.
+                </p>
+                <button @onclick="ScanMixers" class="btn w-full mt-6">Try again</button>
+            }
+        </article>
     </div>
 </section>
 
 @code {
     private ConnectState _state = ConnectState.Idle;
     private List<MixerInfo> _foundMixers = new();
-    
+
     protected override async Task OnInitializedAsync()
     {
         Connector.OnConnectionStateChanged += async state =>
         {
             try { await OnConnectionStateChangedAsync(state); }
-            catch (Exception ex) { Logger.LogError(ex, "Fout bij statechange"); }
+            catch (Exception ex) { Logger.LogError(ex, "State change error"); }
         };
         await Connector.TryAutoReconnectAsync();
     }
@@ -71,9 +71,10 @@
             case ConnectState.ScanRequired:
                 await ScanMixers();
                 break;
+
             case ConnectState.Connected:
                 Connector.OnBusStateReceived += HandleBusStateReceived;
-                await Connector.InitializeBusState(6);
+                await Mixer.InitializeBussesAsync(6);
                 break;
         }
         await InvokeAsync(StateHasChanged);
@@ -84,20 +85,23 @@
         _state = ConnectState.Connecting;
         StateHasChanged();
 
-        _foundMixers = await Connector.ScanViaBroadcast();
-
+        _foundMixers = await Connector.ScanViaBroadcastAsync();
         _state = _foundMixers.Any() ? ConnectState.MixersFound : ConnectState.NoMixerFound;
+
         StateHasChanged();
     }
+
     private async void HandleBusStateReceived()
     {
         Connector.OnBusStateReceived -= HandleBusStateReceived;
-        if (await Connector.IsSetupCompletedAsync())
+
+        // Check of er band setup is opgeslagen
+        if (Storage.Get<List<BandMemberSetup>>(StorageKeys.BandSetup).HasValue)
             NavManager.NavigateTo(Routes.Dashboard);
         else
             NavManager.NavigateTo(Routes.Band);
     }
-    
+
     public void Dispose()
     {
         Connector.OnBusStateReceived -= HandleBusStateReceived;

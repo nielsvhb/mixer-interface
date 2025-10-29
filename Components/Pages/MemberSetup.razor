@@ -1,11 +1,12 @@
 ﻿@attribute [Route(Routes.MemberSetup)]
-@inject MixerConnectorService Connector
-@inject NavigationManager NavManager
 @using Eggbox.Models
 @using Eggbox.Services
+@inject NavigationManager NavManager
 @inject BandStateService BandState
+@inject MixerCommandService Mixer
+@inject MixerStateCacheService Cache
 
-<section>
+<section class="h-screen container flex flex-col py-6">
     <div class="mt-6 flex justify-between items-center">
         <button @onclick="BackToBand" class="text-sm text-blue-500 underline">← Back to Band</button>
         <h1 class="text-xl text-gray-700 font-fredoka">Setup: @_member?.Name</h1>
@@ -31,14 +32,14 @@
                 <label class="text-sm text-gray-600">Color</label>
                 <select class="border border-gray-300 rounded-md py-1 px-2 bg-gray-100"
                         @bind="SelectedColor">
-                    @foreach (var color in MixerColor.Enumerators)   @* of .All *@
+                    @foreach (var color in MixerColor.Enumerators)
                     {
                         <option value="@color.MappedValue">@color.ToString()</option>
                     }
                 </select>
             </div>
 
-            <!-- Instrumentenlijst -->
+            <!-- Instrumenten -->
             <div>
                 <div class="flex justify-between items-center mb-2">
                     <label class="text-sm text-gray-600">Instruments</label>
@@ -55,7 +56,7 @@
 
                             <button class="text-xs text-blue-500 underline ml-2"
                                     @onclick="() => OpenGainModal(instr)">
-                                Set Gain
+                                Set Level
                             </button>
                         </div>
 
@@ -63,9 +64,9 @@
                             <label class="text-xs text-gray-600">Input Channel</label>
                             <select class="w-full border border-gray-300 rounded-md py-1 px-2 bg-gray-100"
                                     @bind="instr.ChannelIndex">
-                                @foreach (var input in _inputs)
+                                @foreach (var ch in Enumerable.Range(1, 16))
                                 {
-                                    <option value="@input.ChannelIndex">@input.ChannelIndex</option>
+                                    <option value="@ch">Channel @ch</option>
                                 }
                             </select>
                         </div>
@@ -92,9 +93,11 @@
     {
         <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
             <div class="bg-white rounded-lg shadow-lg p-5 w-80">
-                <h2 class="text-lg font-semibold mb-3">Set Gain - @_activeInstrument.Name</h2>
+                <h2 class="text-lg font-semibold mb-3">Set Level - @_activeInstrument.Name</h2>
                 <input type="range" min="0" max="1" step="0.01"
-                       @bind="_activeInstrument.Gain" class="w-full" />
+                       @bind="_activeInstrument.Gain"
+                       @oninput="async e => await ApplyGain(Convert.ToSingle(e.Value))"
+                       class="w-full" />
                 <p class="text-center mt-2 text-sm text-gray-600">
                     @_activeInstrument.Gain.ToString("0.00")
                 </p>
@@ -110,35 +113,30 @@
 @code {
     [Parameter] public int Id { get; set; }
 
-    private List<InstrumentSetup> _inputs = new();
     private BandMemberSetup? _member;
     private bool _showGainModal;
     private InstrumentSetup? _activeInstrument;
 
-    private bool IsReady => _member != null && _member.Instruments.All(i => i.Gain > 0);
+    private bool IsReady => _member is not null && _member.Instruments.All(i => i.Gain > 0);
     private bool IsLastMember => Id >= BandState.Members.Count;
-    
+
     private int SelectedColor
     {
-        get => _member.Color.MappedValue;
-        set => _member.Color = MixerColor
-            .FromMappedValue(value)
-            .ValueOr(_member.Color);
+        get => _member?.Color.MappedValue ?? 0;
+        set
+        {
+            if (_member != null)
+                _member.Color = MixerColor.FromMappedValue(value).ValueOr(_member.Color);
+        }
     }
-    
-    protected override async Task OnParametersSetAsync()
+
+    protected override void OnParametersSet()
     {
         _member = BandState.GetMemberById(Id);
-        if (_inputs.Count == 0)
-            _inputs = await Connector.LoadInputChannelsAsync();
-
-        await InvokeAsync(StateHasChanged);
     }
 
     private void AddInstrument()
-    {
-        _member!.Instruments.Add(new InstrumentSetup(1, "Guitar", 0));
-    }
+        => _member!.Instruments.Add(new InstrumentSetup(1, "Guitar", 0.5f));
 
     private void OpenGainModal(InstrumentSetup instr)
     {
@@ -150,6 +148,15 @@
     {
         _activeInstrument = null;
         _showGainModal = false;
+    }
+
+    private async Task ApplyGain(float value)
+    {
+        if (_activeInstrument == null) return;
+        _activeInstrument.Gain = value;
+
+        // Gebruik nieuwe command service om live OSC te sturen
+        await Mixer.Mix(_member!.BusIndex).Channel(_activeInstrument.ChannelIndex).SetFader(value);
     }
 
     private void NextMember()
@@ -166,11 +173,9 @@
             NavManager.NavigateTo(Routes.Band);
     }
 
-    private async Task FinishSetup()
-    {
-        await Connector.SaveBandSetupAsync(BandState.Members);
-        NavManager.NavigateTo(Routes.Dashboard);
-    }
+    private void FinishSetup()
+        => NavManager.NavigateTo(Routes.Dashboard);
 
-    private void BackToBand() => NavManager.NavigateTo(Routes.Band);
+    private void BackToBand()
+        => NavManager.NavigateTo(Routes.Band);
 }

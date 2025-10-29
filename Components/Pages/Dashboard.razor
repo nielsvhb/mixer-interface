@@ -2,6 +2,8 @@
 @using Eggbox.Services
 @using Eggbox.Models
 @inject MixerConnectorService Connector
+@inject MixerCommandService Mixer
+@inject MixerStateCacheService Cache
 
 <PageTitle>Dashboard</PageTitle>
 
@@ -10,107 +12,157 @@
         .fader-vertical {
             writing-mode: bt-lr;
             -webkit-appearance: slider-vertical;
-            appearance: slider-vertical;
-            height: 160px;
-            width: 24px;
+            height: 180px;
+            width: 28px;
+        }
+
+        .fader-card {
+            transition: background 0.2s ease, transform 0.1s ease;
+        }
+
+        .fader-card:hover {
+            background: rgba(255, 255, 255, 0.85);
+            transform: scale(1.02);
         }
     </style>
+
     <div class="flex justify-between items-center">
-        <h1 class="text-xl font-semibold">Mixer Dashboard</h1>
-        <button class="btn btn-sm" @onclick="Reload">↻ Herladen</button>
-        <NavLink href="@Routes.OscMonitor" class="btn btn-primary btn-sm">
-            OSC Monitor
-        </NavLink>
+        <div class="flex items-center gap-2">
+            <h1 class="text-xl font-semibold">Mixer Dashboard</h1>
+            <select @bind="_selectedMix" class="select select-sm select-bordered ml-3">
+                <option value="0">Main LR</option>
+                @for (int i = 1; i <= 6; i++)
+                {
+                    <option value="@i">Mix @i (@Cache.BusNames.GetValueOrDefault(i, $"Mix {i}") )</option>
+                }
+            </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button class="btn btn-sm" @onclick="Reload">↻ Herladen</button>
+            <NavLink href="@Routes.OscMonitor" class="btn btn-primary btn-sm">
+                OSC Monitor
+            </NavLink>
+        </div>
     </div>
 
     @if (_loading)
     {
-        <div class="text-neutral-500 text-sm">Bezig met laden...</div>
+        <div class="text-neutral-500 text-sm mt-3">Bezig met laden...</div>
     }
     else if (_channels.Any())
     {
-        <div class="grid gap-3 grid-cols-4">
+        <div class="grid gap-3 grid-cols-4 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 mt-3">
             @foreach (var ch in _channels)
             {
-                <div class="rounded-lg border p-3 bg-white/70 backdrop-blur">
+                <div class="rounded-lg border p-3 text-center bg-white/60 backdrop-blur fader-card">
                     <div class="flex justify-between items-center mb-2">
-                        <div class="flex items-center gap-2">
-                            <span class="inline-block w-3 h-3 rounded-full" style="background:@ch.Color.HexCode"></span>
-                            <span class="font-medium">@ch.Index</span>
-                        </div>
-                        <input type="checkbox" checked="@ch.Muted" @onchange="e => ToggleMute(ch, (bool)e.Value!)" title="Mute kanaal"/>
+                        <span class="font-semibold text-sm">@ch.Name</span>
+                        <input type="checkbox"
+                               checked="@ch.Muted"
+                               @onchange="e => ToggleMute(ch, (bool)e.Value!)"
+                               title="Mute kanaal" />
                     </div>
 
-                    <input type="range" min="0" max="1" step="0.01"
-                           value="@ch.Gain"
-                           @oninput="e => OnGainChanged(ch, Convert.ToSingle(e.Value))"
-                           class="fader-vertical"/>
-                    <div class="text-xs mt-1 text-center">@((int)(ch.Gain * 100))%</div>
+                    <input type="range"
+                           min="0" max="1" step="0.01"
+                           value="@ch.Fader"
+                           @oninput="e => OnFaderChanged(ch, Convert.ToSingle(e.Value))"
+                           class="fader-vertical" />
+                    <div class="text-xs mt-1 text-center">@((int)(ch.Fader * 100))%</div>
+
+                    <div class="w-full h-1.5 mt-2 rounded-full"
+                         style="background:@ch.Color.HexCode"></div>
                 </div>
             }
         </div>
     }
     else
     {
-        <div class="text-neutral-500 text-sm">Geen kanalen geladen</div>
+        <div class="text-neutral-500 text-sm mt-3">Geen kanalen geladen</div>
     }
 </div>
 
 @code {
     private bool _loading = true;
+    private int _selectedMix = 0;
     private List<ChannelVm> _channels = [];
 
     protected override async Task OnInitializedAsync()
     {
-        Connector.OnOscLog += HandleOscLog; // optioneel logging
-        await LoadChannels();
+        Connector.OnOscLog += (_, sent) =>
+        {
+            if (!sent) InvokeAsync(StateHasChanged);
+        };
+
+        Connector.OnBusUpdated += (_, __, ___) => InvokeAsync(StateHasChanged);
+        await Reload();
     }
 
-    private async Task LoadChannels()
+    private async Task Reload()
     {
         _loading = true;
         StateHasChanged();
 
-        var instruments = await Connector.LoadInputChannelsAsync();
+        // vraag fader + mute waarden op
+        var refreshTasks = Enumerable.Range(1, 16)
+            .Select(i => GetCurrentChannel().Channel(i).RequestRefresh());
+        await Task.WhenAll(refreshTasks);
 
-        _channels = instruments.Select(i => new ChannelVm
-        {
-            Index = i.ChannelIndex,
-            Name = i.Name,
-            Gain = (float)i.Gain,
-            Color = MixerColor.FromMappedValue(i.ChannelIndex).ValueOr(MixerColor.Red)
-        }).ToList();
-
+        BuildChannelsFromCache();
         _loading = false;
         StateHasChanged();
     }
 
-    private async Task OnGainChanged(ChannelVm ch, float value)
+    private void BuildChannelsFromCache()
     {
-        ch.Gain = value / 100;
-        await Connector.SendCustomAsync(new OscCore.OscMessage($"/ch/{ch.Index}/mix/fader", ch.Gain));
+        _channels = Enumerable.Range(1, 16)
+            .Select(i =>
+            {
+                string prefix = _selectedMix == 0
+                    ? $"/ch/{i:D2}/mix/"
+                    : $"/ch/{i:D2}/mix/{_selectedMix:D2}/";
+
+                return new ChannelVm
+                {
+                    Index = i,
+                    Name = $"Ch {i:D2}",
+                    Fader = Cache.TryGetFader(prefix + (_selectedMix == 0 ? "fader" : "level")) ?? 0f,
+                    Muted = Cache.TryGetMute(prefix + "on") ?? false,
+                    Color = MixerColor.FromMappedValue(i).ValueOr(MixerColor.Red)
+                };
+            }).ToList();
+    }
+
+    private MixerCommandService.MainMixProxy GetCurrentChannel()
+        => _selectedMix == 0 ? Mixer.Main() : null!;
+
+    private MixerCommandService.MixProxy GetCurrentMix()
+        => Mixer.Mix(_selectedMix);
+
+    private async Task OnFaderChanged(ChannelVm ch, float value)
+    {
+        ch.Fader = value;
+        if (_selectedMix == 0)
+            await Mixer.Main().Channel(ch.Index).SetFader(value);
+        else
+            await Mixer.Mix(_selectedMix).Channel(ch.Index).SetFader(value);
     }
 
     private async Task ToggleMute(ChannelVm ch, bool muted)
     {
         ch.Muted = muted;
-        var muteValue = muted ? 0f : 1f;
-        await Connector.SendCustomAsync(new OscCore.OscMessage($"/ch/{ch.Index}/mix/on", muteValue));
+        if (_selectedMix == 0)
+            await Mixer.Main().Channel(ch.Index).SetMute(muted);
+        else
+            await Mixer.Mix(_selectedMix).Channel(ch.Index).SetMute(muted);
     }
-
-    private void HandleOscLog(string message, bool sent)
-    {
-        // optioneel: live log van verkeer in console
-        Console.WriteLine($"{(sent ? "TX" : "RX")}: {message}");
-    }
-
-    private async Task Reload() => await LoadChannels();
 
     private sealed class ChannelVm
     {
         public int Index { get; set; }
         public string Name { get; set; } = "";
-        public float Gain { get; set; }
+        public float Fader { get; set; }
         public bool Muted { get; set; }
         public MixerColor Color { get; set; } = MixerColor.Red;
     }

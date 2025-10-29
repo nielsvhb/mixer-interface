@@ -19,7 +19,7 @@ module.exports = {
             black: colors.black,
             white: colors.white,
             gray: colors.slate,
-            primary: "#FF6666",
+            primary: "#ee3967",
             primaryDark: "#FF5c7D",
             accent: "#E1CE55"
         },

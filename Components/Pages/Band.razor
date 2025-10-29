@@ -1,30 +1,33 @@
 ﻿@attribute [Route(Routes.Band)]
 @using Eggbox.Services
 @using Eggbox.Models
-@using Microsoft.Extensions.Logging
 @inject MixerConnectorService Connector
-@inject ILogger<UdpOscClient> Logger
+@inject MixerCommandService Mixer
+@inject MixerStateCacheService Cache
 @inject BandStateService BandState
+@inject NavigationManager NavManager
 
-<section class="h-screen container flex flex-col py-5">
-    <div class="mt-10">
-        <h1 class="text-2xl text-gray-600 font-medium text-center mb-5">
-            Who's in the band?
+<section class="h-screen container flex flex-col py-6">
+    <div class="mt-6">
+        <h1 class="text-2xl text-gray-700 font-semibold text-center mb-6">
+            Who’s in the band?
         </h1>
     </div>
 
     <div class="space-y-4 overflow-y-auto mb-6">
         @foreach (var member in _members)
         {
-            <div class="flex items-center justify-between p-4 rounded-xl bg-gray-100 backdrop-blur-sm border border-gray-200">
+            <div class="flex items-center justify-between p-4 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200 shadow-sm">
                 <div class="flex items-center gap-4">
-                    <div class="size-4 rounded-sm border border-gray-300"
+                    <div class="size-5 rounded-md border border-gray-300"
                          style="background-color:@member.Color.HexCode"></div>
 
                     <input class="text-lg font-semibold bg-transparent border-b border-gray-300 focus:outline-none"
                            @bind="member.Name"
                            placeholder="Name" />
                 </div>
+
+                <span class="text-sm text-gray-500">Mix @member.BusIndex</span>
             </div>
         }
     </div>
@@ -36,26 +39,29 @@
         </p>
     }
 
-    <button @onclick="Next" class="btn btn-primary mt-auto">
-        Next
+    <button @onclick="Next" class="btn btn-primary mt-auto self-center px-8">
+        Next →
     </button>
 </section>
 
 @code {
     private List<BandMemberSetup> _members = new();
-    private List<InstrumentSetup>? _inputs;
     private bool _showError = false;
 
     protected override async Task OnInitializedAsync()
     {
+        await Mixer.InitializeBussesAsync(6);
+        await Task.Delay(300); // geef mixer tijd om OSC-responses te sturen
+
         _members = Enumerable.Range(1, 6)
             .Select(i => new BandMemberSetup(
                 i,
-                Connector.BusNames.GetValueOrDefault(i, ""),
-                Connector.BusColors.GetValueOrDefault(i, MixerColor.FromMappedValue(i).ValueOr(MixerColor.Red))))
+                Cache.BusNames.GetValueOrDefault(i, $"Mix {i}"),
+                Cache.BusColors.GetValueOrDefault(i, MixerColor.FromMappedValue(i).ValueOr(MixerColor.Red))
+            ))
             .ToList();
     }
-    
+
     private async Task Next()
     {
         if (_members.Any(m => string.IsNullOrWhiteSpace(m.Name)))
@@ -65,7 +71,6 @@
             return;
         }
 
-        await Connector.SaveBandSetupAsync(_members);
         BandState.SetMembers(_members);
         NavManager.NavigateTo($"/member-setup/1");
     }

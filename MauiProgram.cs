@@ -20,13 +20,19 @@ public static class MauiProgram
         builder.Services.AddBlazorise();
         builder.Services.AddTailwindProviders();
         builder.Services.AddFontAwesomeIcons();
-        builder.Services.AddSingleton<MixerConnectorService>();
         builder.Services.AddSingleton<BandStateService>();
+        
+        builder.Services.AddSingleton<MixerConnectorService>();
+        builder.Services.AddSingleton<IMixerTransport>(sp => sp.GetRequiredService<MixerConnectorService>());
+        builder.Services.AddSingleton<MixerStateCacheService>();
+        builder.Services.AddSingleton<MixerCommandService>();
 
         AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
         {
             var ex = e.ExceptionObject as Exception;
-            System.Diagnostics.Debug.WriteLine($"🔥 Unhandled Exception: {ex}");
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"❌ Unhandled Exception: {ex?.Message}");
+            Console.ResetColor();
         };
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();
