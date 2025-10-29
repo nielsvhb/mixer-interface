@@ -355,8 +355,9 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
 
             for (int ch = 1; ch <= 16; ch++)
             {
-                await _client.SendAsync(new OscMessage($"/ch/{ch}/config/name"));
-                await _client.SendAsync(new OscMessage($"/ch/{ch}/mix/fader"));
+                var chId = ch.ToString("D2");
+                await _client.SendAsync(new OscMessage($"/ch/{chId}/config/name"));
+                await _client.SendAsync(new OscMessage($"/ch/{chId}/mix/fader"));
             }
 
             await Task.Delay(500);
@@ -383,7 +384,8 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
             if (parts.Length < 2 || parts[0] != "ch")
                 return -1;
 
-            return int.TryParse(parts[1], out var index) ? index : -1;
+            var ret = int.TryParse(parts[1], out var index) ? index : -1;
+            return ret;
         }
         catch
         {
@@ -429,6 +431,6 @@ public sealed class MixerConnectorService(ILogger<MixerConnectorService> logger)
         var response = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
         _client.PacketReceived -= Handler;
 
-        return false;  // response.Contains("EggBoxSetup:1");
+        return response.Contains("EggBoxSetup:1");
     }
 }

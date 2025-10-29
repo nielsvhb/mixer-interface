@@ -1,6 +1,117 @@
 ﻿@attribute [Route(Routes.Dashboard)]
+@using Eggbox.Services
+@using Eggbox.Models
+@inject MixerConnectorService Connector
 
+<PageTitle>Dashboard</PageTitle>
 
-<section>
- Dashboard
-</section>
+<div class="p-4 space-y-4">
+    <style>
+        .fader-vertical {
+            writing-mode: bt-lr;
+            -webkit-appearance: slider-vertical;
+            appearance: slider-vertical;
+            height: 160px;
+            width: 24px;
+        }
+    </style>
+    <div class="flex justify-between items-center">
+        <h1 class="text-xl font-semibold">Mixer Dashboard</h1>
+        <button class="btn btn-sm" @onclick="Reload">↻ Herladen</button>
+        <NavLink href="@Routes.OscMonitor" class="btn btn-primary btn-sm">
+            OSC Monitor
+        </NavLink>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="text-neutral-500 text-sm">Bezig met laden...</div>
+    }
+    else if (_channels.Any())
+    {
+        <div class="grid gap-3 grid-cols-4">
+            @foreach (var ch in _channels)
+            {
+                <div class="rounded-lg border p-3 bg-white/70 backdrop-blur">
+                    <div class="flex justify-between items-center mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="inline-block w-3 h-3 rounded-full" style="background:@ch.Color.HexCode"></span>
+                            <span class="font-medium">@ch.Index</span>
+                        </div>
+                        <input type="checkbox" checked="@ch.Muted" @onchange="e => ToggleMute(ch, (bool)e.Value!)" title="Mute kanaal"/>
+                    </div>
+
+                    <input type="range" min="0" max="1" step="0.01"
+                           value="@ch.Gain"
+                           @oninput="e => OnGainChanged(ch, Convert.ToSingle(e.Value))"
+                           class="fader-vertical"/>
+                    <div class="text-xs mt-1 text-center">@((int)(ch.Gain * 100))%</div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="text-neutral-500 text-sm">Geen kanalen geladen</div>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private List<ChannelVm> _channels = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Connector.OnOscLog += HandleOscLog; // optioneel logging
+        await LoadChannels();
+    }
+
+    private async Task LoadChannels()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        var instruments = await Connector.LoadInputChannelsAsync();
+
+        _channels = instruments.Select(i => new ChannelVm
+        {
+            Index = i.ChannelIndex,
+            Name = i.Name,
+            Gain = (float)i.Gain,
+            Color = MixerColor.FromMappedValue(i.ChannelIndex).ValueOr(MixerColor.Red)
+        }).ToList();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task OnGainChanged(ChannelVm ch, float value)
+    {
+        ch.Gain = value / 100;
+        await Connector.SendCustomAsync(new OscCore.OscMessage($"/ch/{ch.Index}/mix/fader", ch.Gain));
+    }
+
+    private async Task ToggleMute(ChannelVm ch, bool muted)
+    {
+        ch.Muted = muted;
+        var muteValue = muted ? 0f : 1f;
+        await Connector.SendCustomAsync(new OscCore.OscMessage($"/ch/{ch.Index}/mix/on", muteValue));
+    }
+
+    private void HandleOscLog(string message, bool sent)
+    {
+        // optioneel: live log van verkeer in console
+        Console.WriteLine($"{(sent ? "TX" : "RX")}: {message}");
+    }
+
+    private async Task Reload() => await LoadChannels();
+
+    private sealed class ChannelVm
+    {
+        public int Index { get; set; }
+        public string Name { get; set; } = "";
+        public float Gain { get; set; }
+        public bool Muted { get; set; }
+        public MixerColor Color { get; set; } = MixerColor.Red;
+    }
+}
