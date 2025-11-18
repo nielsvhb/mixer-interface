@@ -96,6 +96,11 @@
         };
 
         Connector.OnBusUpdated += (_, __, ___) => InvokeAsync(StateHasChanged);
+        Connector.OnStateUpdated += () =>
+        {
+            BuildChannelsFromCache();
+            InvokeAsync(StateHasChanged);
+        };
         await Reload();
     }
 

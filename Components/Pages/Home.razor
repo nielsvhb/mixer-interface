@@ -34,7 +34,7 @@
                 <div>
                     @foreach (var mixer in _foundMixers)
                     {
-                        <MixerCard MixerInfo="mixer" />
+                        <MixerCard Mixer="mixer" />
                     }
                 </div>
             }
@@ -75,6 +75,11 @@
             case ConnectState.Connected:
                 Connector.OnBusStateReceived += HandleBusStateReceived;
                 await Mixer.InitializeBussesAsync(6);
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1000);
+                    HandleBusStateReceived();
+                });
                 break;
         }
         await InvokeAsync(StateHasChanged);
@@ -95,8 +100,8 @@
     {
         Connector.OnBusStateReceived -= HandleBusStateReceived;
 
-        // Check of er band setup is opgeslagen
-        if (Storage.Get<List<BandMemberSetup>>(StorageKeys.BandSetup).HasValue)
+        // Check of er band setup is opgeslagen via LR name
+        if (false)
             NavManager.NavigateTo(Routes.Dashboard);
         else
             NavManager.NavigateTo(Routes.Band);

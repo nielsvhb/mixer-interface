@@ -70,7 +70,6 @@
             await InvokeAsync(StateHasChanged);
             return;
         }
-
         BandState.SetMembers(_members);
         NavManager.NavigateTo($"/member-setup/1");
     }

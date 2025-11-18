@@ -1,64 +1,43 @@
 ﻿@using Eggbox.Models
 @using Eggbox.Services
 @inject MixerConnectorService Connector
-@inject MixerCommandService Mixer
-@inject MixerStateCacheService Cache
 @inject NavigationManager NavManager
 
-<div class="relative p-4 rounded-2xl bg-white/20 backdrop-blur-md border border-gray-100/40 
-            shadow-md hover:shadow-lg hover:scale-[1.02] cursor-pointer transition-all duration-200 ease-out"
+<div class="relative p-3 rounded-2xl overflow-hidden bg-white/30 backdrop-blur-sm border border-gray-100/60
+            transition-transform duration-200 ease-in-out
+            @(isAnimating ? "scale-95 opacity-70" : "scale-100 opacity-100")"
      @onclick="SelectAsync">
-    
-    <div class="flex justify-between items-center">
-        <div>
-            <div class="text-lg font-semibold text-white">IP: @MixerInfo.IpAddress</div>
-            <div class="text-sm text-gray-300">@MixerInfo.Type</div>
-        </div>
 
-        <div class="flex items-center gap-2 text-white">
-            <i class="fa-solid fa-satellite-dish text-xl"></i>
+    <div class="transition-opacity duration-300 flex gap-10 items-center w-full">
+        <div class="grow">
+            <div class="font-semibold text-white">IP: @Mixer.IpAddress</div>
+            <div class="text-sm text-gray-200">@Mixer.Type</div>
+        </div>
+        <div class="items-center flex gap-1">
+            <i class="text-2xl fas fa-circle-play"></i>
             <span class="font-medium text-sm">Connect</span>
         </div>
     </div>
-
-    @if (_isConnecting)
-    {
-        <div class="absolute inset-0 bg-black/50 flex items-center justify-center rounded-2xl">
-            <i class="fas fa-spinner animate-spin text-white text-2xl"></i>
-        </div>
-    }
 </div>
 
 @code {
-    [Parameter] public MixerInfo MixerInfo { get; set; } = default!;
-    private bool _isConnecting;
+    [Parameter] public MixerInfo Mixer { get; set; } = default!;
+
+    private bool isAnimating;
 
     private async Task SelectAsync()
     {
-        if (_isConnecting)
+        if (isAnimating) 
             return;
 
-        _isConnecting = true;
+        isAnimating = true;
         StateHasChanged();
 
-        try
-        {
-            // Verbind met de mixer
-            await Connector.ConnectAsync(MixerInfo);
+        await Task.Delay(200);
 
-            // Start businitialisatie
-            await Mixer.InitializeBussesAsync(6);
+        await Connector.ConnectAsync(Mixer);
+        //NavManager.NavigateTo(Routes.Band);
 
-            // De Home-pagina navigeert verder na OnBusStateReceived
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[MixerCard] Connection failed: {ex.Message}");
-        }
-        finally
-        {
-            _isConnecting = false;
-            StateHasChanged();
-        }
+        isAnimating = false;
     }
 }

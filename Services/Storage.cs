@@ -43,5 +43,4 @@ public static class StorageKeys
     public sealed record StorageKey<T>(string Key);
     
     public static readonly StorageKey<MixerInfo> LastMixer = new("last-mixer2");
-    public static readonly StorageKey<List<BandMemberSetup>> BandSetup = new("band");
 }

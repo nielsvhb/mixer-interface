@@ -29,6 +29,8 @@ public sealed class MixerConnectorService : IDisposable, IMixerTransport
     public event Action<int, string, MixerColor>? OnBusUpdated;
     public event Action? OnBusStateReceived;
     public event Action<object?, OscPacket>? MessageReceived;
+    public event Action? OnStateUpdated;
+
 #if ANDROID
     private WifiManager.MulticastLock? _multicastLock;
 #endif
@@ -159,12 +161,16 @@ public sealed class MixerConnectorService : IDisposable, IMixerTransport
 
     private void HandleIncomingPacket(object? s, OscPacket packet)
     {
+        MessageReceived?.Invoke(this, packet);
+        
         if (packet is not OscMessage msg) return;
 
         OnOscLog?.Invoke($"⬅️ {msg.Address} {string.Join(' ', msg.Select(a => a.ToString()))}", false);
 
         // centraal verwerken in cache
         _stateCache.UpdateFromMessage(msg);
+        OnStateUpdated?.Invoke(); // 🔔 notify UI that cache changed
+
 
         // Specifieke bus-events naar UI
         if (msg.Address.EndsWith("/config/name") || msg.Address.EndsWith("/config/color"))
