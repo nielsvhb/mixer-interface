@@ -31,10 +31,11 @@ public sealed class UdpOscClient : IDisposable
         StartReceivingAsync();
 
         _ = SendAsync(new OscMessage("/xremote"));
+        _ = SendAsync(new OscMessage("/xinfo"));
         _subscriptionTimer = new Timer(_ => 
         {
             _ = SendAsync(new OscMessage("/xremote"));
-        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
     public async Task SendAsync(OscPacket packet)
@@ -94,6 +95,8 @@ public sealed class UdpOscClient : IDisposable
 
     private static int GetFreePort()
     {
+        //XR16 lusitert enkel naar 10025???
+        return 10025;
         using var udp = new UdpClient(0);
         return ((IPEndPoint)udp.Client.LocalEndPoint!).Port;
     }

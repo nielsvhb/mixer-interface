@@ -63,8 +63,7 @@ public sealed class MixerConnectorService : IDisposable, IMixerTransport
             }
 
             OnConnectionStateChanged?.Invoke(ConnectState.Connecting);
-            var success = await ConnectAsync(lm);
-            OnConnectionStateChanged?.Invoke(success ? ConnectState.Connected : ConnectState.ScanRequired);
+            await ConnectAsync(lm);
         });
 
         if (!hadPrevious)
@@ -93,11 +92,14 @@ public sealed class MixerConnectorService : IDisposable, IMixerTransport
             ConnectedMixerIp = ip.SomeNotNull();
             _logger.LogInformation("✅ Verbonden met mixer op {ip}", ip);
 
+            OnConnectionStateChanged?.Invoke(ConnectState.Connected);
+
             return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Fout bij verbinden met mixer");
+            OnConnectionStateChanged?.Invoke(ConnectState.ScanRequired);
             return false;
         }
     }
