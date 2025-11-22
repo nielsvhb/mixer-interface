@@ -1,9 +1,10 @@
 ﻿@attribute [Route(Routes.Dashboard)]
 @using Eggbox.Services
 @using Eggbox.Models
-@inject MixerConnectorService Connector
-@inject MixerCommandService Mixer
-@inject MixerStateCacheService Cache
+
+@inject Mixer Mixer
+@inject MixerModel Model
+@inject NavigationManager Nav
 
 <PageTitle>Dashboard</PageTitle>
 
@@ -29,26 +30,26 @@
     <div class="flex justify-between items-center">
         <div class="flex items-center gap-2">
             <h1 class="text-xl font-semibold">Mixer Dashboard</h1>
-            <select @bind="_selectedMix" class="select select-sm select-bordered ml-3">
+
+            <select @bind="_selectedOutput" class="select select-sm select-bordered ml-3">
                 <option value="0">Main LR</option>
-                @for (int i = 1; i <= 6; i++)
+
+                @foreach (var b in Model.Busses)
                 {
-                    <option value="@i">Mix @i (@Cache.BusNames.GetValueOrDefault(i, $"Mix {i}") )</option>
+                    <option value="@b.Index">Bus @b.Index (@b.Name)</option>
                 }
             </select>
         </div>
 
         <div class="flex items-center gap-2">
-            <button class="btn btn-sm" @onclick="Reload">↻ Herladen</button>
-            <NavLink href="@Routes.OscMonitor" class="btn btn-primary btn-sm">
-                OSC Monitor
-            </NavLink>
+            <button class="btn btn-sm" @onclick="Reload">↻ Reload</button>
+            <NavLink href="@Routes.OscMonitor" class="btn btn-primary btn-sm">OSC Monitor</NavLink>
         </div>
     </div>
 
     @if (_loading)
     {
-        <div class="text-neutral-500 text-sm mt-3">Bezig met laden...</div>
+        <div class="text-neutral-500 text-sm mt-3">Loading...</div>
     }
     else if (_channels.Any())
     {
@@ -58,17 +59,19 @@
                 <div class="rounded-lg border p-3 text-center bg-white/60 backdrop-blur fader-card">
                     <div class="flex justify-between items-center mb-2">
                         <span class="font-semibold text-sm">@ch.Name</span>
+
                         <input type="checkbox"
                                checked="@ch.Muted"
-                               @onchange="e => ToggleMute(ch, (bool)e.Value!)"
-                               title="Mute kanaal" />
+                               @onchange="(e) => ToggleMute(ch, (bool)e.Value!)"
+                               title="Mute channel" />
                     </div>
 
                     <input type="range"
                            min="0" max="1" step="0.01"
                            value="@ch.Fader"
-                           @oninput="e => OnFaderChanged(ch, Convert.ToSingle(e.Value))"
-                           class="fader-vertical" />
+                           class="fader-vertical"
+                           @oninput="(e) => OnFaderChanged(ch, Convert.ToSingle(e.Value))" />
+
                     <div class="text-xs mt-1 text-center">@((int)(ch.Fader * 100))%</div>
 
                     <div class="w-full h-1.5 mt-2 rounded-full"
@@ -79,29 +82,49 @@
     }
     else
     {
-        <div class="text-neutral-500 text-sm mt-3">Geen kanalen geladen</div>
+        <div class="text-neutral-500 text-sm mt-3">No channels loaded</div>
     }
 </div>
 
 @code {
     private bool _loading = true;
-    private int _selectedMix = 0;
-    private List<ChannelVm> _channels = [];
+    private int _selectedOutput = 0; // 0 = Main LR
+    private List<ChannelVm> _channels = new();
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        Connector.OnOscLog += (_, sent) =>
+        // Rebuild UI when mixer state changes
+        Model.StateChanged += _ =>
         {
-            if (!sent) InvokeAsync(StateHasChanged);
-        };
-
-        Connector.OnBusUpdated += (_, __, ___) => InvokeAsync(StateHasChanged);
-        Connector.OnStateUpdated += () =>
-        {
-            BuildChannelsFromCache();
+            BuildVM();
             InvokeAsync(StateHasChanged);
         };
-        await Reload();
+
+        BuildVM();
+        _loading = false;
+    }
+
+    private void BuildVM()
+    {
+        _channels = Model.Channels.Select(ch =>
+        {
+            float fader = _selectedOutput == 0
+                ? ch.Fader            // main mix fader
+                : ch.Sends.TryGetValue(_selectedOutput, out var s) ? s.Level : 0f;
+
+            bool mute = _selectedOutput == 0
+                ? ch.Mute
+                : ch.Sends.TryGetValue(_selectedOutput, out var s2) && s2.Mute;
+
+            return new ChannelVm
+            {
+                Index = ch.Index,
+                Name = ch.Name ?? $"Ch {ch.Index:D2}",
+                Fader = fader,
+                Muted = mute,
+                Color = ch.Color
+            };
+        }).ToList();
     }
 
     private async Task Reload()
@@ -109,58 +132,36 @@
         _loading = true;
         StateHasChanged();
 
-        // vraag fader + mute waarden op
-        var refreshTasks = Enumerable.Range(1, 16)
-            .Select(i => GetCurrentChannel().Channel(i).RequestRefresh());
-        await Task.WhenAll(refreshTasks);
+        // Request fresh values from mixer
+        for (int i = 1; i <= Model.Info.ChannelCount; i++)
+        {
+            // The parser will update Model.State
+            await Mixer.Channel(i).RequestRefreshAsync();
+        }
 
-        BuildChannelsFromCache();
         _loading = false;
+        BuildVM();
         StateHasChanged();
     }
 
-    private void BuildChannelsFromCache()
+    private async Task OnFaderChanged(ChannelVm vm, float value)
     {
-        _channels = Enumerable.Range(1, 16)
-            .Select(i =>
-            {
-                string prefix = _selectedMix == 0
-                    ? $"/ch/{i:D2}/mix/"
-                    : $"/ch/{i:D2}/mix/{_selectedMix:D2}/";
+        vm.Fader = value;
 
-                return new ChannelVm
-                {
-                    Index = i,
-                    Name = $"Ch {i:D2}",
-                    Fader = Cache.TryGetFader(prefix + (_selectedMix == 0 ? "fader" : "level")) ?? 0f,
-                    Muted = Cache.TryGetMute(prefix + "on") ?? false,
-                    Color = MixerColor.FromMappedValue(i).ValueOr(MixerColor.Red)
-                };
-            }).ToList();
+        if (_selectedOutput == 0)
+            await Mixer.Main().Channel(vm.Index).SetFader(value);
+        else
+            await Mixer.Bus(_selectedOutput).Channel(vm.Index).SetFader(value);
     }
 
-    private MixerCommandService.MainMixProxy GetCurrentChannel()
-        => _selectedMix == 0 ? Mixer.Main() : null!;
-
-    private MixerCommandService.MixProxy GetCurrentMix()
-        => Mixer.Mix(_selectedMix);
-
-    private async Task OnFaderChanged(ChannelVm ch, float value)
+    private async Task ToggleMute(ChannelVm vm, bool muted)
     {
-        ch.Fader = value;
-        if (_selectedMix == 0)
-            await Mixer.Main().Channel(ch.Index).SetFader(value);
-        else
-            await Mixer.Mix(_selectedMix).Channel(ch.Index).SetFader(value);
-    }
+        vm.Muted = muted;
 
-    private async Task ToggleMute(ChannelVm ch, bool muted)
-    {
-        ch.Muted = muted;
-        if (_selectedMix == 0)
-            await Mixer.Main().Channel(ch.Index).SetMute(muted);
+        if (_selectedOutput == 0)
+            await Mixer.Main().Channel(vm.Index).SetMute(muted);
         else
-            await Mixer.Mix(_selectedMix).Channel(ch.Index).SetMute(muted);
+            await Mixer.Bus(_selectedOutput).Channel(vm.Index).SetMute(muted);
     }
 
     private sealed class ChannelVm

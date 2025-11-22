@@ -1,0 +1,177 @@
+﻿@attribute [Route(Routes.Layout)]
+@using Eggbox.Models
+@using Eggbox.Services
+@inject Mixer Mixer
+@inject MixerModel Model
+@inject NavigationManager Nav
+
+<section class="h-full flex flex-col">
+
+    <!-- ZONE 1: VISUAL MIXER LAYOUT -->
+    <div class="p-4 flex flex-col items-center">
+        <h2 class="text-xl font-semibold mb-4 text-gray-700">XR16 Layout</h2>
+
+        <div class="relative p-4 border border-gray-400 rounded-xl">
+
+            <!-- INPUTS 1–16 -->
+            <div class="grid grid-cols-8 gap-4">
+                @for (int ch = 1; ch <= 16; ch++)
+                {
+                    <div class="w-10 h-10 rounded-full border border-gray-500
+                                flex items-center justify-center
+                                cursor-pointer hover:bg-gray-200 transition"
+                         @onclick="() => SelectInput(ch)">
+                        @ch
+                    </div>
+                }
+            </div>
+
+            <!-- OUTPUTS (4 Monitor Busses + Main L/R) -->
+            <div class="flex gap-4 mt-6 justify-center">
+                @foreach (var bus in Outputs)
+                {
+                    <div class="w-10 h-10 rounded-full border border-gray-500 flex items-center justify-center cursor-pointer
+                                hover:bg-gray-200 transition"
+                         style="background-color:@bus.Color.HexCode"
+                         @onclick="() => SelectOutput(bus.Index)">
+                        @bus.Short
+                    </div>
+                }
+            </div>
+
+        </div>
+    </div>
+
+
+    <!-- ZONE 2: SELECTED SOCKET PANEL -->
+    <div class="border-t border-gray-300 p-6 bg-white shadow-inner">
+        @if (SelectedInput != null)
+        {
+            <h3 class="text-lg font-bold mb-3">Input CH@SelectedInput.Index</h3>
+
+            <!-- Name -->
+            <div class="mb-4">
+                <label class="block text-sm text-gray-600">Name</label>
+                <input class="w-full border border-gray-300 p-2 rounded"
+                       @bind="SelectedInput.Name" placeholder="Instrument name..." />
+            </div>
+
+            <!-- Color Picker -->
+            <div class="mb-4">
+                <label class="block text-sm text-gray-600">Assigned Output Color</label>
+                <div class="flex gap-4 mt-2">
+                    @foreach (var c in Colors)
+                    {
+                        <div class="w-8 h-8 rounded-full border cursor-pointer hover:scale-110 transition"
+                             style="background-color:@c.HexCode"
+                             @onclick="() => SetColorForInput(c)">
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Gain Button -->
+            <button class="btn btn-secondary mt-4"
+                    @onclick="OpenGainModal">
+                Adjust Gain
+            </button>
+        }
+
+        @if (SelectedOutput != null)
+        {
+            <h3 class="text-lg font-bold mb-3">Output: @SelectedOutput.ShortLabel</h3>
+
+            <!-- Name -->
+            <div class="mb-4">
+                <label class="block text-sm text-gray-600">Name</label>
+                <input class="w-full border border-gray-300 p-2 rounded"
+                       @bind="SelectedOutput.Name" placeholder="Person name..." />
+            </div>
+        }
+    </div>
+
+
+    <!-- ZONE 3: FOOTER / WIZARD BUTTONS -->
+    <div class="p-4 flex justify-between border-t bg-gray-50">
+        <button class="btn" @onclick="Back">Back</button>
+        <button class="btn btn-primary" @onclick="GoToDashboard">Go to Dashboard →</button>
+    </div>
+
+</section>
+
+
+@code {
+    private SocketInfo? SelectedInput;
+    private SocketInfo? SelectedOutput;
+
+    private List<MixerColor> Colors = new()
+    {
+        MixerColor.Red,
+        MixerColor.Green,
+        MixerColor.Yellow,
+        MixerColor.Blue,
+        MixerColor.Magenta
+    };
+
+    private List<(int Index, string Short, MixerColor Color)> Outputs => new()
+    {
+        (1, "B1", MixerColor.Red),
+        (2, "B2", MixerColor.Green),
+        (3, "B3", MixerColor.Yellow),
+        (4, "B4", MixerColor.Blue),
+        (11, "L", MixerColor.Magenta), // main L
+        (12, "R", MixerColor.Magenta)  // main R
+    };
+
+    void SelectInput(int ch)
+    {
+        SelectedOutput = null;
+        SelectedInput = new SocketInfo
+        {
+            Index = ch,
+            Name = Model.Channels.FirstOrDefault(c => c.Index == ch)?.Name ?? ""
+        };
+    }
+
+    void SelectOutput(int bus)
+    {
+        var (i, shortName, color) = Outputs.First(x => x.Index == bus);
+
+        SelectedInput = null;
+        SelectedOutput = new SocketInfo
+        {
+            Index = i,
+            Name = Model.Busses.FirstOrDefault(b => b.Index == i)?.Name ?? shortName,
+            Color = color,
+            ShortLabel = shortName
+        };
+    }
+
+    async Task SetColorForInput(MixerColor c)
+    {
+        if (SelectedInput == null) return;
+
+        SelectedInput.Color = c;
+
+        await Mixer.Channel(SelectedInput.Index).SetColor(c);
+
+        StateHasChanged();
+    }
+
+    void Back() => Nav.NavigateTo("/home");
+
+    void GoToDashboard() => Nav.NavigateTo("/dashboard");
+
+    void OpenGainModal()
+    {
+        // modal logica hier
+    }
+
+    public class SocketInfo
+    {
+        public int Index { get; set; }
+        public string? Name { get; set; }
+        public MixerColor Color { get; set; } = MixerColor.Red;
+        public string ShortLabel { get; set; } = "";
+    }
+}

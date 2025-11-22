@@ -2,10 +2,10 @@
 @using Eggbox.Services
 @using Eggbox.Models
 @using Microsoft.Extensions.Logging
-@inject MixerConnectorService Connector
-@inject MixerCommandService Mixer
-@inject MixerStateCacheService Cache
-@inject ILogger<UdpOscClient> Logger
+@inject Mixer Mixer
+@inject MixerIO IO
+@inject MixerBroadcastScanner Scanner
+@inject ILogger<Home> Logger
 @inject NavigationManager NavManager
 
 <section class="h-full bg-gradient-to-b from-primary to-primary-dark text-gray-200">
@@ -26,7 +26,9 @@
             }
             else if (_state == ConnectState.NoMixerFound)
             {
-                <p class="text-center">No mixers found. Make sure you're on the same Wi-Fi network and the mixer is turned on.</p>
+                <p class="text-center">
+                    No mixers found. Make sure you're on the same Wi-Fi network and the mixer is turned on.
+                </p>
                 <button @onclick="ScanMixers" class="btn w-full mt-6">Try again</button>
             }
             else if (_state == ConnectState.MixersFound)
@@ -34,7 +36,7 @@
                 <div>
                     @foreach (var mixer in _foundMixers)
                     {
-                        <MixerCard Mixer="mixer" />
+                        <MixerCard MixerInfo="mixer" OnSelected="ConnectToMixer" />
                     }
                 </div>
             }
@@ -55,34 +57,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        Connector.OnConnectionStateChanged += async state =>
-        {
-            try { await OnConnectionStateChangedAsync(state); }
-            catch (Exception ex) { Logger.LogError(ex, "State change error"); }
-        };
-        await Connector.TryAutoReconnectAsync();
-    }
-
-    private async Task OnConnectionStateChangedAsync(ConnectState state)
-    {
-        _state = state;
-        switch (state)
-        {
-            case ConnectState.ScanRequired:
-                await ScanMixers();
-                break;
-
-            case ConnectState.Connected:
-                Connector.OnBusStateReceived += HandleBusStateReceived;
-                await Mixer.InitializeBussesAsync(6);
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(1000);
-                    HandleBusStateReceived();
-                });
-                break;
-        }
-        await InvokeAsync(StateHasChanged);
+        // hier desnoods nog auto-reconnect mechaniek inbouwen o.b.v. Storage
+        await ScanMixers();
     }
 
     private async Task ScanMixers()
@@ -90,25 +66,35 @@
         _state = ConnectState.Connecting;
         StateHasChanged();
 
-        _foundMixers = await Connector.ScanViaBroadcastAsync();
+        _foundMixers = await Scanner.ScanAsync();
         _state = _foundMixers.Any() ? ConnectState.MixersFound : ConnectState.NoMixerFound;
 
         StateHasChanged();
     }
 
-    private async void HandleBusStateReceived()
+    private async Task ConnectToMixer(MixerInfo mixer)
     {
-        Connector.OnBusStateReceived -= HandleBusStateReceived;
+        try
+        {
+            _state = ConnectState.Connecting;
+            StateHasChanged();
 
-        // Check of er band setup is opgeslagen via LR name
-        if (false)
-            NavManager.NavigateTo(Routes.Dashboard);
-        else
-            NavManager.NavigateTo(Routes.Band);
+            await Mixer.ConnectAsync(mixer);
+
+            _state = ConnectState.Connected;
+
+            NavManager.NavigateTo(Routes.Layout);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "❌ Fout bij verbinden met mixer");
+            _state = ConnectState.NoMixerFound;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()
     {
-        Connector.OnBusStateReceived -= HandleBusStateReceived;
+        // geen Connector-events meer, dus ook niets meer te unsubscriben
     }
 }

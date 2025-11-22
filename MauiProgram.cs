@@ -2,6 +2,7 @@
 using Blazorise;
 using Blazorise.Tailwind;
 using Blazorise.Icons.FontAwesome;
+using Eggbox.Models;
 using Eggbox.Services;
 
 namespace Eggbox;
@@ -20,12 +21,8 @@ public static class MauiProgram
         builder.Services.AddBlazorise();
         builder.Services.AddTailwindProviders();
         builder.Services.AddFontAwesomeIcons();
-        builder.Services.AddSingleton<BandStateService>();
         
-        builder.Services.AddSingleton<MixerConnectorService>();
-        builder.Services.AddSingleton<IMixerTransport>(sp => sp.GetRequiredService<MixerConnectorService>());
-        builder.Services.AddSingleton<MixerStateCacheService>();
-        builder.Services.AddSingleton<MixerCommandService>();
+        builder.Services.AddMixerCore();
 
         AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
         {
